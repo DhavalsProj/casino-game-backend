@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -19,7 +20,7 @@ export class UsersService {
   async create(createUserDto: CreateUserDto) {
     const existingUser = await this.userRepository.findOne({
       where: {
-        mobile: createUserDto.mobile,
+        uniqueId: createUserDto.mobile,
       },
     });
 
@@ -68,12 +69,17 @@ export class UsersService {
       'pin',
     );
 
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10,
+    );
+
     const user = this.userRepository.create({
       name: createUserDto.name,
-      mobile: createUserDto.mobile,
+      uniqueId: createUserDto.mobile,
       type: createUserDto.type,
-      uniqueId: uniqueId,
-      password: password,
+      mobile: createUserDto.mobile,
+      password: hashedPassword,
       pin: pin,
     });
 
@@ -94,11 +100,11 @@ export class UsersService {
     return {
       id: user.id,
       name: user.name,
-      mobile: user.mobile,
+      uniqueId: user.uniqueId,
       type: user.type,
       password: user.password,
       agentId: user.agentId,
-      uniqueId: user.uniqueId,
+      mobile: user.mobile,
       pin: user.pin,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
