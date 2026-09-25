@@ -23,7 +23,29 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+NestJS API for the casino game Angular frontend. It provides user creation, login, JWT authentication, and protected user lookup endpoints.
+
+## Configuration
+
+Copy `.env.example` to `.env` and set the SQL Server credentials, database name (`CasinoGameDB`), and a strong `JWT_SECRET`. Because the NestJS SQL Server driver uses SQL authentication, first run [`database/create-app-login.sql`](database/create-app-login.sql) in SSMS while connected with Windows Authentication, then use the same login and password in `.env`. Run [`database/schema.sql`](database/schema.sql) before starting with `DB_ENABLED=true`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
+
+The SQL Server default instance must have TCP/IP enabled. In SQL Server Configuration Manager, open `SQL Server Network Configuration` -> `Protocols for MSSQLSERVER`, enable `TCP/IP`, set `IPAll` `TCP Port` to `1433` with `TCP Dynamic Ports` empty, then restart `SQL Server (MSSQLSERVER)`. If `casino_app` cannot log in, enable `SQL Server and Windows Authentication mode` in SSMS server properties and restart the SQL Server service.
+
+Database schema changes are managed by the idempotent SQL schema script; `DB_SYNCHRONIZE` is disabled by default. Store the master credential as a bcrypt hash in `system_credentials`; the environment password is only a development fallback when that row does not exist.
+
+## API
+
+`POST /users/create` creates an agent or user. For a user, include `agentId`. The response includes generated credentials once; credentials are never returned by user listing or lookup.
+
+`POST /auth/login` accepts `{ "mobile": "...", "password": "..." }` and returns `{ "accessToken": "...", "user": { ... } }`.
+
+Send the token from Angular on protected requests:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+Protected endpoints are `GET /users` and `POST /users/get-by-id`.
 
 ## Project setup
 

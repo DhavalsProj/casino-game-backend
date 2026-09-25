@@ -1,13 +1,18 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { randomInt } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { User } from './entities/user.entity';
+import { User, UserType } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
+import { toUserResponse, UserResponse } from './user-response';
+import type { AuthUser } from '../auth/auth-user';
 
 @Injectable()
 export class UsersService {
@@ -16,7 +21,16 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, currentUser: AuthUser) {
+    const type = currentUser.type === UserType.AGENT ? UserType.USER : createUserDto.type;
+    if (type === UserType.AGENT && currentUser.type !== 'superadmin' && currentUser.type !== 'admin') {
+      throw new ForbiddenException('Only admins can create agents');
+    }
+
+    const requestedAgentId = currentUser.type === UserType.AGENT
+      ? currentUser.uniqueId
+      : createUserDto.agentId;
+
     const existingUser = await this.userRepository.findOne({
       where: {
         mobile: createUserDto.mobile,
@@ -27,15 +41,15 @@ export class UsersService {
       throw new ConflictException('User already registered');
     }
 
-    if (createUserDto.type === 'user') {
-      if (!createUserDto.agentId) {
+    if (type === UserType.USER) {
+      if (!requestedAgentId) {
         throw new NotFoundException('Agent ID is required for user type');
       }
 
     const agent = await this.userRepository.findOne({
       where: {
-        uniqueId: createUserDto.agentId,
-        type: 'agent',
+        uniqueId: requestedAgentId,
+        type: UserType.AGENT,
       },
     });
 
@@ -46,9 +60,9 @@ export class UsersService {
 
     let uniqueId: string;
 
-  if (createUserDto.type === 'user') {
+  if (type === UserType.USER) {
     uniqueId = await this.generateUniqueValue(
-      () => this.generateUserId(createUserDto.agentId!),
+      () => this.generateUserId(requestedAgentId!),
       'uniqueId',
     );
   } else {
@@ -58,64 +72,103 @@ export class UsersService {
     );
   }
 
-    const password = await this.generateUniqueValue(
-      () => this.generatePassword(),
-      'password',
-    );
-
-    const pin = await this.generateUniqueValue(
-      () => this.generatePin(),
-      'pin',
-    );
+    const password = this.generatePassword();
 
     const user = this.userRepository.create({
       name: createUserDto.name,
       mobile: createUserDto.mobile,
-      type: createUserDto.type,
+      type,
+      agentId: requestedAgentId ?? null,
       uniqueId: uniqueId,
-      password: password,
-      pin: pin,
+      passwordHash: await bcrypt.hash(password, 12),
+      isActive: true,
     });
 
-    return this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(user);
+
+    return {
+      user: toUserResponse(savedUser),
+      credentials: { password },
+    };
   }
 
-  async findAll(): Promise<User[]> {
-    return this.userRepository.find();
+  async findAll(currentUser: AuthUser, type?: UserType): Promise<UserResponse[]> {
+    const where = currentUser.type === UserType.AGENT
+      ? { type: UserType.USER, agentId: currentUser.uniqueId }
+      : currentUser.type === UserType.USER
+        ? { id: currentUser.id }
+        : type
+          ? { type }
+          : {};
+    const users = await this.userRepository.find({ where });
+    const agents = await this.userRepository.find({ where: { type: UserType.AGENT } });
+    const agentNames = new Map(agents.map((agent) => [agent.uniqueId, agent.name]));
+    return users.map((user) => toUserResponse(user, user.agentId ? agentNames.get(user.agentId) ?? null : null));
   }
-    
-  async findOne(id: number) : Promise<User> {
+
+  async findAgents(currentUser: AuthUser): Promise<UserResponse[]> {
+    if (currentUser.type !== 'superadmin' && currentUser.type !== 'admin') {
+      throw new ForbiddenException('Only admins can list agents');
+    }
+    const agents = await this.userRepository.find({ where: { type: UserType.AGENT } });
+    return agents.map((agent) => toUserResponse(agent));
+  }
+
+  async findOne(id: number, currentUser: AuthUser): Promise<UserResponse> {
     const user = await this.userRepository.findOne({where: { id }});
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    return {
-      id: user.id,
-      name: user.name,
-      mobile: user.mobile,
-      type: user.type,
-      password: user.password,
-      agentId: user.agentId,
-      uniqueId: user.uniqueId,
-      pin: user.pin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
+    const canView = currentUser.type === 'superadmin' || currentUser.type === 'admin'
+      || (currentUser.type === UserType.AGENT && user.type === UserType.USER && user.agentId === currentUser.uniqueId)
+      || (currentUser.type === UserType.USER && user.id === currentUser.id);
+    if (!canView) {
+      throw new ForbiddenException('You are not authorized to view this user');
+    }
+
+    return toUserResponse(user);
+  }
+
+  async update(id: number, changes: { name?: string; mobile?: string }, currentUser: AuthUser): Promise<UserResponse> {
+    if (currentUser.type !== 'superadmin' && currentUser.type !== 'admin') {
+      throw new ForbiddenException('Only admins can edit users');
+    }
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (changes.mobile && changes.mobile !== user.mobile) {
+      const duplicate = await this.userRepository.findOne({ where: { mobile: changes.mobile } });
+      if (duplicate) {
+        throw new ConflictException('Mobile number is already registered');
+      }
+    }
+    Object.assign(user, changes);
+    const savedUser = await this.userRepository.save(user);
+    return toUserResponse(savedUser);
+  }
+
+  async remove(id: number, currentUser: AuthUser): Promise<void> {
+    if (currentUser.type !== 'superadmin' && currentUser.type !== 'admin') {
+      throw new ForbiddenException('Only admins can delete users');
+    }
+    const result = await this.userRepository.delete(id);
+    if (!result.affected) {
+      throw new NotFoundException('User not found');
+    }
   }
 
   private async generateUniqueValue(
     generator: () => string,
-    field: 'uniqueId' | 'password' | 'pin',
+    field: 'uniqueId',
   ): Promise<string> {
-    let value: string;
-
-    do {
-      value = generator();
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const value = generator();
 
       const existing = await this.userRepository.findOne({
-          where: {
+        where: {
           [field]: value,
         },
       });
@@ -123,7 +176,9 @@ export class UsersService {
       if (!existing) {
         return value;
       }
-    } while (true);
+    }
+
+    throw new ConflictException('Could not generate a unique user identifier');
   }
 
   private generateAgentId(): string {
@@ -134,7 +189,7 @@ export class UsersService {
     const prefix = agentId.substring(0, 7);
 
     const randomNumber = Math.floor(
-     100 + Math.random() * 900,
+    100 + randomInt(900),
    );
 
   return `${prefix}${randomNumber}`;
@@ -144,28 +199,24 @@ export class UsersService {
     const digits = this.generateRandomDigits(4);
 
     const upper =
-      String.fromCharCode(65 + Math.floor(Math.random() * 26));
+      String.fromCharCode(65 + randomInt(26));
 
     const lower =
-      String.fromCharCode(97 + Math.floor(Math.random() * 26));
+      String.fromCharCode(97 + randomInt(26));
 
     const password = digits + upper + lower;
 
     return password
       .split('')
-      .sort(() => Math.random() - 0.5)
+      .sort(() => randomInt(3) - 1)
       .join('');
-  }
-
-  private generatePin(): string {
-    return this.generateRandomDigits(4);
   }
 
   private generateRandomDigits(length: number): string {
     let result = '';
 
     for (let i = 0; i < length; i++) {
-      result += Math.floor(Math.random() * 10);
+      result += randomInt(10);
     }
 
     return result;
