@@ -111,6 +111,14 @@ export class UsersService {
     };
   }
 
+  async getAllAgents(): Promise<User[]> {
+    return this.userRepository.find({
+      where: {
+        type: 'agent',
+      },
+    });
+  }
+
   private async generateUniqueValue(
     generator: () => string,
     field: 'uniqueId' | 'password' | 'pin',

@@ -20,4 +20,9 @@ export class UsersController {
   findOne(@Body('id') id: number) {
     return this.usersService.findOne(+id);
   }
+
+  @Get('agents')
+  getAllAgents() {
+    return this.usersService.getAllAgents();
+  }
 }
