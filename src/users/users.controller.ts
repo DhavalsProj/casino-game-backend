@@ -53,4 +53,9 @@ export class UsersController {
   remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
     return this.usersService.remove(+id, currentUser);
   }
+
+  @Get('agents')
+  getAllAgents() {
+    return this.usersService.getAllAgents();
+  }
 }

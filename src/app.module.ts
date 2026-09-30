@@ -1,14 +1,18 @@
-import dotenv from 'dotenv';
+import { config as loadEnv } from 'dotenv';
+
+loadEnv();
+
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { WalletModule } from './wallet/wallet.module';
 import { NoDbModule } from './no-db/no-db.module';
-
-dotenv.config();
 
 const databaseEnabled = process.env.DB_ENABLED === 'true';
 
@@ -24,47 +28,28 @@ const databaseEnabled = process.env.DB_ENABLED === 'true';
             inject: [ConfigService],
 
             useFactory: (config: ConfigService) => ({
-              type: 'mssql' as const,
+              type: 'postgres' as const,
 
               host: config.get<string>('DB_HOST', 'localhost'),
 
-              port: Number(
-                config.get<string>('DB_PORT', '1433'),
-              ),
+              port: Number(config.get<string>('DB_PORT', '5432')),
 
-              username: config.get<string>('DB_USERNAME', 'casino_app'),
+              username: config.get<string>('DB_USERNAME', 'postgres'),
 
               password: config.get<string>('DB_PASSWORD', ''),
 
-              database: config.get<string>(
-                'DB_NAME',
-                'CasinoGameDB',
-              ),
-
-              options: {
-                encrypt:
-                  config.get<string>(
-                    'DB_ENCRYPT',
-                    'false',
-                  ) === 'true',
-
-                trustServerCertificate:
-                  config.get<string>(
-                    'DB_TRUST_SERVER_CERTIFICATE',
-                    'true',
-                  ) === 'true',
-              },
+              database: config.get<string>('DB_NAME', 'casino_game'),
 
               autoLoadEntities: true,
 
               synchronize:
-                config.get<string>('DB_SYNCHRONIZE', 'false') ===
-                'true',
+                config.get<string>('DB_SYNCHRONIZE', 'false') === 'true',
             }),
           }),
 
           UsersModule,
           AuthModule,
+          WalletModule,
         ]
       : [NoDbModule]),
   ],

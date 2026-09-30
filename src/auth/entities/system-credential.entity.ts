@@ -17,12 +17,12 @@ export class SystemCredential {
   @Column({ name: 'PasswordHash', type: 'varchar', length: 255 })
   passwordHash: string;
 
-  @Column({ name: 'IsActive', type: 'bit', default: true })
+  @Column({ name: 'IsActive', type: 'boolean', default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'CreatedAt', type: 'datetime2' })
+  @CreateDateColumn({ name: 'CreatedAt', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'UpdatedAt', type: 'datetime2' })
+  @UpdateDateColumn({ name: 'UpdatedAt', type: 'timestamp' })
   updatedAt: Date;
 }
