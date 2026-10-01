@@ -38,7 +38,7 @@ const databaseEnabled = process.env.DB_ENABLED === 'true';
 
               password: config.get<string>('DB_PASSWORD', ''),
 
-              database: config.get<string>('DB_NAME', 'casino_game'),
+              database: config.get<string>('DB_NAME', 'CasinoGameDB'),
 
               autoLoadEntities: true,
 

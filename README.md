@@ -27,11 +27,9 @@ NestJS API for the casino game Angular frontend. It provides user creation, logi
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the SQL Server credentials, database name (`CasinoGameDB`), and a strong `JWT_SECRET`. Because the NestJS SQL Server driver uses SQL authentication, first run [`database/create-app-login.sql`](database/create-app-login.sql) in SSMS while connected with Windows Authentication, then use the same login and password in `.env`. Run [`database/schema.sql`](database/schema.sql) before starting with `DB_ENABLED=true`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
+Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `JWT_SECRET`. In pgAdmin 4, connect to your PostgreSQL server and use the existing `CasinoGameDB` database. Run [`database/migrate-postgres-identifiers.sql`](database/migrate-postgres-identifiers.sql) to normalize columns from the previous PostgreSQL layout, then execute [`database/schema.sql`](database/schema.sql) in its Query Tool to create any missing tables and indexes. Set `DB_ENABLED=true` and the matching connection values in `.env` before starting the API. The default PostgreSQL port is `5432`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
 
-The SQL Server default instance must have TCP/IP enabled. In SQL Server Configuration Manager, open `SQL Server Network Configuration` -> `Protocols for MSSQLSERVER`, enable `TCP/IP`, set `IPAll` `TCP Port` to `1433` with `TCP Dynamic Ports` empty, then restart `SQL Server (MSSQLSERVER)`. If `casino_app` cannot log in, enable `SQL Server and Windows Authentication mode` in SSMS server properties and restart the SQL Server service.
-
-Database schema changes are managed by the idempotent SQL schema script; `DB_SYNCHRONIZE` is disabled by default. Store the master credential as a bcrypt hash in `system_credentials`; the environment password is only a development fallback when that row does not exist.
+The PostgreSQL schema script creates the application tables and indexes. `DB_SYNCHRONIZE` is disabled by default, so apply future schema changes explicitly. The script does not copy existing records from SQL Server; SQL Server data must be migrated separately before switching production traffic. [`database/schema.sql.bak`](database/schema.sql.bak) and [`database/create-app-login.sql`](database/create-app-login.sql) are legacy SQL Server artifacts and are not used by the PostgreSQL app. Store the master credential as a bcrypt hash in `system_credentials`; the environment password is only a development fallback when that row does not exist.
 
 ## API
 
