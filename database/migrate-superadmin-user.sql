@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE "Users"
+    ALTER COLUMN unique_id DROP NOT NULL;
+
+COMMIT;

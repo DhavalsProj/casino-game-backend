@@ -28,7 +28,7 @@ export class NoDbService {
 
   async login(identifier: string, password: string) {
     if (identifier.toLowerCase() === (process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin').toLowerCase() && password === (process.env.SUPERADMIN_PASSWORD ?? 'SuperAdmin@123')) {
-      const user = { id: 0, name: 'Super Admin', mobile: '9000000000', type: 'superadmin', uniqueId: 'SA00000000', agentId: null };
+      const user = { id: 0, name: 'Super Admin', mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000', type: 'superadmin', uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001', agentId: null };
       return { accessToken: await this.jwtService.signAsync({ sub: user.id, mobile: user.mobile, type: user.type, uniqueId: user.uniqueId, agentId: null }), user };
     }
 

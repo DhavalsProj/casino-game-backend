@@ -7,7 +7,7 @@ export interface UserResponse {
   type: string;
   agentId: string | null;
   agentName: string | null;
-  uniqueId: string;
+  uniqueId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

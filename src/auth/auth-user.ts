@@ -4,6 +4,6 @@ export interface AuthUser {
   id: number;
   mobile: string;
   type: UserType | 'superadmin' | 'admin';
-  uniqueId: string;
+  uniqueId: string | null;
   agentId?: string | null;
 }

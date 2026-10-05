@@ -10,7 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { randomInt } from 'node:crypto';
 
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 
 import { User, UserType } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -104,6 +104,7 @@ export class UsersService {
       type,
       agentId: requestedAgentId ?? null,
       uniqueId,
+      password: password,
       passwordHash: hashedPassword,
       isActive: true,
     });
@@ -122,19 +123,22 @@ export class UsersService {
     currentUser: AuthUser,
     type?: UserType,
   ): Promise<UserResponse[]> {
-    const where =
-      currentUser.type === UserType.AGENT
-        ? {
-            type: UserType.USER,
-            agentId: currentUser.uniqueId,
-          }
-        : currentUser.type === UserType.USER
-          ? {
-              id: currentUser.id,
-            }
-          : type
-            ? { type }
-            : {};
+    let where: FindOptionsWhere<User> = {};
+
+    if (currentUser.type === UserType.AGENT) {
+      const agentId = currentUser.uniqueId;
+      if (!agentId) {
+        throw new ForbiddenException('Agent identifier is missing');
+      }
+      where = {
+        type: UserType.USER,
+        agentId,
+      };
+    } else if (currentUser.type === UserType.USER) {
+      where = { id: currentUser.id };
+    } else if (type) {
+      where = { type };
+    }
 
     const users = await this.userRepository.find({ where });
 
@@ -148,14 +152,16 @@ export class UsersService {
       agents.map((agent) => [agent.uniqueId, agent.name]),
     );
 
-    return users.map((user) =>
-      toUserResponse(
-        user,
-        user.agentId
-          ? agentNames.get(user.agentId) ?? null
-          : null,
-      ),
-    );
+    return users
+      .filter((user) => user.type !== UserType.SUPERADMIN)
+      .map((user) =>
+        toUserResponse(
+          user,
+          user.agentId
+            ? agentNames.get(user.agentId) ?? null
+            : null,
+        ),
+      );
   }
 
   async findAgents(

@@ -13,6 +13,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 import { WalletService } from './wallet.service';
 import { CreateWalletDto } from './dto/create-wallet.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('wallet')
 export class WalletController {
@@ -21,8 +22,8 @@ export class WalletController {
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('superadmin', 'admin', 'agent')
-  create(@Body() createWalletDto: CreateWalletDto) {
-    return this.walletService.create(createWalletDto);
+  create(@Body() createWalletDto: CreateWalletDto, @CurrentUser() currentUser: any) {
+    return this.walletService.create(createWalletDto, currentUser);
   }
 
   @Get('wallet/:userId')

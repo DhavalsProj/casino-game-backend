@@ -48,6 +48,9 @@ export class AuthService {
     const superAdminIdentifier =
       process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin';
 
+    const superAdminUniqueId =
+      process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001';
+
     const superAdminPassword =
       process.env.SUPERADMIN_PASSWORD ?? 'SuperAdmin@123';
 
@@ -74,7 +77,7 @@ export class AuthService {
     ) {
       await this.recordLoginAudit(
         null,
-        'SA00000000',
+        superAdminUniqueId,
         'MASTER',
         'SUCCESS',
         request,
@@ -84,7 +87,7 @@ export class AuthService {
         sub: 0,
         mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000',
         type: 'superadmin',
-        uniqueId: 'SA00000000',
+        uniqueId: superAdminUniqueId,
         agentId: null,
       });
 
@@ -95,7 +98,7 @@ export class AuthService {
           name: 'Super Admin',
           mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000',
           type: 'superadmin',
-          uniqueId: 'SA00000000',
+          uniqueId: superAdminUniqueId,
           agentId: null,
         },
       };
@@ -107,7 +110,7 @@ export class AuthService {
     ) {
       await this.recordLoginAudit(
         null,
-        'SA00000000',
+        superAdminUniqueId,
         'MASTER',
         'FAILED',
         request,

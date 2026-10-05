@@ -9,6 +9,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let userRepository: {
     findOne: jest.Mock;
+    find: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
   };
@@ -16,6 +17,7 @@ describe('UsersService', () => {
   beforeEach(async () => {
     userRepository = {
       findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn(),
       create: jest.fn((user) => user),
       save: jest.fn(async (user) => ({
         ...user,
@@ -40,6 +42,33 @@ describe('UsersService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('does not include superadmin users in findAll results', async () => {
+    const superadmin = {
+      id: 1,
+      name: 'Superadmin',
+      mobile: '9876543210',
+      type: UserType.SUPERADMIN,
+      agentId: null,
+      uniqueId: 'SUPERADMIN',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as User;
+    const regularUser = {
+      ...superadmin,
+      id: 2,
+      name: 'Regular user',
+      type: UserType.USER,
+      uniqueId: 'USER001',
+    } as User;
+    userRepository.find
+      .mockResolvedValueOnce([superadmin, regularUser])
+      .mockResolvedValueOnce([]);
+
+    const users = await service.findAll({ type: 'superadmin' } as any);
+
+    expect(users.map((user) => user.type)).toEqual([UserType.USER]);
   });
 
   it('returns the generated password without persisting it', async () => {
