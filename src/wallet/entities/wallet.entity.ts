@@ -7,9 +7,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
-import { WalletRequest } from './wallet.request.entity';
-import { Transaction } from '../../transcation/entities/transcation.entity';
+import type { User } from '../../users/entities/user.entity';
+import type { WalletRequest } from './wallet.request.entity';
+import type { Transaction } from '../../transcation/entities/transcation.entity';
 
 @Entity('wallets')
 export class Wallet {
@@ -30,10 +30,16 @@ export class Wallet {
     })
     balance: string;
 
-    @OneToMany(() => Transaction,(transaction) => transaction.wallet,)
+    @OneToMany(
+        () => require('../../transcation/entities/transcation.entity').Transaction,
+        (transaction: Transaction) => transaction.wallet,
+    )
     transactions: Transaction[];
 
-    @OneToMany(() => WalletRequest,(request) => request.wallet,)
+    @OneToMany(
+        () => require('./wallet.request.entity').WalletRequest,
+        (request: WalletRequest) => request.wallet,
+    )
     requests: WalletRequest[];
 
     @Column({ name: 'created_by', type: 'integer' })

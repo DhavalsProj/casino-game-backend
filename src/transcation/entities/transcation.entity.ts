@@ -7,9 +7,9 @@ import {
   JoinColumn,
 } from 'typeorm';
 
-import { User } from '../../users/entities/user.entity';
-import { Wallet } from '../../wallet/entities/wallet.entity';
-import { WalletRequest } from '../../wallet/entities/wallet.request.entity';
+import type { User } from '../../users/entities/user.entity';
+import type { Wallet } from '../../wallet/entities/wallet.entity';
+import type { WalletRequest } from '../../wallet/entities/wallet.request.entity';
 
 export enum WalletTransactionType {
   CREDIT = 'CREDIT',
@@ -31,16 +31,20 @@ export class Transaction {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Wallet, (wallet) => wallet.transactions, {
+  @ManyToOne(
+    () => require('../../wallet/entities/wallet.entity').Wallet,
+    (wallet: Wallet) => wallet.transactions,
+    {
     onDelete: 'CASCADE',
-  })
+    },
+  )
   @JoinColumn({ name: 'wallet_id' })
   wallet: Wallet;
 
   @Column({ name: 'wallet_id' })
   walletId: number;
 
-  @ManyToOne(() => User, {
+  @ManyToOne(() => require('../../users/entities/user.entity').User, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'user_id' })
@@ -49,7 +53,7 @@ export class Transaction {
   @Column({ name: 'user_id' })
   userId: number;
 
-  @ManyToOne(() => WalletRequest, {
+  @ManyToOne(() => require('../../wallet/entities/wallet.request.entity').WalletRequest, {
     nullable: true,
     onDelete: 'SET NULL',
   })

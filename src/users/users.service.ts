@@ -104,7 +104,6 @@ export class UsersService {
       type,
       agentId: requestedAgentId ?? null,
       uniqueId,
-      password: password,
       passwordHash: hashedPassword,
       isActive: true,
     });

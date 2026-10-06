@@ -13,8 +13,6 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { WalletModule } from './wallet/wallet.module';
 import { NoDbModule } from './no-db/no-db.module';
-import { TranscationController } from './transcation/transcation.controller';
-import { TranscationService } from './transcation/transcation.service';
 import { TranscationModule } from './transcation/transcation.module';
 
 const databaseEnabled = process.env.DB_ENABLED === 'true';
@@ -53,14 +51,13 @@ const databaseEnabled = process.env.DB_ENABLED === 'true';
           UsersModule,
           AuthModule,
           WalletModule,
+          TranscationModule,
         ]
       : [NoDbModule]),
-
-    TranscationModule,
   ],
 
-  controllers: [AppController, TranscationController],
+  controllers: [AppController],
 
-  providers: [AppService, TranscationService],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
-import { WalletRequest } from "./wallet.request.entity";
-import { User } from "../../users/entities/user.entity";
+import type { WalletRequest } from "./wallet.request.entity";
+import type { User } from "../../users/entities/user.entity";
 
 export enum WalletRequestActionType {
   CREATED = 'CREATED',
@@ -13,9 +13,13 @@ export class WalletRequestAction {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @ManyToOne(() => WalletRequest, (request) => request.actions,{
-      onDelete: 'CASCADE',
-    },)
+    @ManyToOne(
+      () => require('./wallet.request.entity').WalletRequest,
+      (request: WalletRequest) => request.actions,
+      {
+        onDelete: 'CASCADE',
+      },
+    )
 
     @JoinColumn({ name: 'request_id' })
     request: WalletRequest;
@@ -23,7 +27,7 @@ export class WalletRequestAction {
     @Column({ name: 'request_id' })
     requestId: number;
 
-    @ManyToOne(() => User, {
+    @ManyToOne(() => require('../../users/entities/user.entity').User, {
     nullable: true,
     onDelete: 'SET NULL',
   })
