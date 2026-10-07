@@ -20,8 +20,12 @@ export class NoDbUsersController {
   constructor(private readonly service: NoDbService) {}
 
   @Get()
-  list(@Req() request: Request & { user: any }, @Query('type') type?: UserType) {
-    return this.service.list(request.user, type);
+  list(
+    @Req() request: Request & { user: any },
+    @Query('type') type?: UserType,
+    @Query('agentId') agentId?: string,
+  ) {
+    return this.service.list(request.user, type, agentId);
   }
 
   @Get('agents')

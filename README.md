@@ -27,23 +27,43 @@ NestJS API for the casino game Angular frontend. It provides user creation, logi
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `JWT_SECRET`. In pgAdmin 4, connect to your PostgreSQL server and use the existing `CasinoGameDB` database. Run [`database/migrate-postgres-identifiers.sql`](database/migrate-postgres-identifiers.sql) to normalize columns from the previous PostgreSQL layout, then execute [`database/schema.sql`](database/schema.sql) in its Query Tool to create any missing tables and indexes. For databases created before wallet audit columns were added, also run [`database/migrate-wallet-entity.sql`](database/migrate-wallet-entity.sql) to add those columns and backfill existing rows from each wallet's `user_id`. If the wallet-request enums are missing values defined by the application, run [`database/migrate-wallet-request-enums.sql`](database/migrate-wallet-request-enums.sql). It updates the `wallet_requests_type_enum` (`ADD_POINTS`, `WITHDRAW`) separately from the `wallet_requests_status_enum` (`PENDING`, `ACCEPTED`, `REJECTED`). Set `DB_ENABLED=true` and the matching connection values in `.env` before starting the API. The default PostgreSQL port is `5432`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
+Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `JWT_SECRET`. In pgAdmin 4, connect to your PostgreSQL server and use the existing `CasinoGameDB` database. For a fresh database, execute [`database/schema.sql`](database/schema.sql) to create all application, wallet, request, and transaction tables. For an existing database, run [`database/migrate-postgres-identifiers.sql`](database/migrate-postgres-identifiers.sql) if it still has the previous PostgreSQL column names, then run [`database/migrate-wallet-entity.sql`](database/migrate-wallet-entity.sql) if wallet audit columns are missing, and finally run [`database/migrate-wallet-api.sql`](database/migrate-wallet-api.sql) to create or update the wallet request and transaction tables and decimal amount columns. Set `DB_ENABLED=true` and the matching connection values in `.env` before starting the API. The default PostgreSQL port is `5432`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
 
-The PostgreSQL schema script creates the application tables and indexes. `DB_SYNCHRONIZE` is disabled by default, so apply future schema changes explicitly. The script does not copy existing records from SQL Server; SQL Server data must be migrated separately before switching production traffic. [`database/schema.sql.bak`](database/schema.sql.bak) and [`database/create-app-login.sql`](database/create-app-login.sql) are legacy SQL Server artifacts and are not used by the PostgreSQL app. For an existing database, run [`database/migrate-superadmin-user.sql`](database/migrate-superadmin-user.sql) to allow a superadmin user to have a null `unique_id`; fresh databases get this from the schema script. Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`; `SUPERADMIN_UNIQUE_ID` defaults to `GK00001`. Then run `npm run seed:superadmin`. The command hashes the password with bcrypt and creates or updates the matching superadmin row in `"Users"` and credential in `"SystemCredentials"`. It leaves `agent_id` and the legacy plaintext `password` field null; the database generates the ID and timestamps. Keep `.env` private. The environment password remains a development fallback when no active database credential exists.
+The PostgreSQL schema script creates the application tables and indexes. `DB_SYNCHRONIZE` is disabled by default, so apply future schema changes explicitly. The script does not copy existing records from SQL Server; SQL Server data must be migrated separately before switching production traffic. [`database/schema.sql.bak`](database/schema.sql.bak) and [`database/create-app-login.sql`](database/create-app-login.sql) are legacy SQL Server artifacts and are not used by the PostgreSQL app. For an existing database, run [`database/migrate-superadmin-user.sql`](database/migrate-superadmin-user.sql) to allow a superadmin user to have a null `unique_id`; fresh databases get this from the schema script.
+
+Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`. On first database-backed startup, the API hashes the password with bcrypt and inserts it into `SystemCredentials`; it does not overwrite an existing credential. Alternatively, run `npm run seed:superadmin` to create or update the superadmin row in `"Users"` and its credential in `"SystemCredentials"`. The seed command leaves `agent_id` and the legacy plaintext `password` field null; the database generates the ID and timestamps. Remove `SUPERADMIN_PASSWORD` from `.env` after the credential has been initialized; superadmin login uses only the database hash. Keep `.env` private. Regular user and agent passwords are bcrypt-hashed in `Users.password_hash`, with the generated plaintext returned once at account creation.
 
 ## API
 
-`POST /users/create` creates an agent or user. For a user, include `agentId`. The response includes generated credentials once; credentials are never returned by user listing or lookup.
+Protected endpoints require bearer authentication in the Authorization header.
 
-`POST /auth/login` accepts `{ "mobile": "...", "password": "..." }` and returns `{ "accessToken": "...", "user": { ... } }`.
+`POST /auth/login` accepts `{ "mobile": "...", "password": "..." }` or `{ "identifier": "...", "password": "..." }` and returns `{ "accessToken": "...", "user": { ... } }`.
 
-Send the token from Angular on protected requests:
+### Users
 
-```http
-Authorization: Bearer <accessToken>
-```
+- `POST /users/create` — `{ "name": "...", "mobile": "...", "type": "agent" | "user", "agentId": "..." }`. `agentId` is required for users and ignored for agents. The response includes generated credentials once.
+- `GET /users?type=user&agentId=GK0012345` — lists users visible to the caller; admins can filter by type and agent, while agents always see only their own assigned users.
+- `GET /users/agents` — admin/superadmin agent list.
+- `POST /users/get-by-id` — `{ "id": 123 }`.
+- `PATCH /users/:id` — `{ "name": "...", "mobile": "..." }`.
+- `DELETE /users/:id`.
 
-Protected endpoints are `GET /users` and `POST /users/get-by-id`.
+Credentials are not returned by user listing or lookup. User IDs in routes and payloads are numeric database IDs; `agentId` is the agent's `uniqueId`.
+
+### Wallets and transactions
+
+Both `/wallet/...` and `/wallets/...` paths are supported.
+
+- `POST /wallets/create` — `{ "userId": 123, "points": "25.50" }`; adds the amount to the wallet and records a credit transaction.
+- `GET /wallets/:userId` — returns the wallet, or `null` if it has not been created.
+- `POST /wallets/request` — `{ "userId": 123, "amount": "10.25", "type": "ADD_POINTS" | "WITHDRAW" }`. Type defaults to `ADD_POINTS`; amounts support up to two decimal places.
+- `GET /wallets/requests/:userId` — lists that user's requests.
+- `PATCH /wallets/requests/:requestId/accept` and `PATCH /wallets/requests/:requestId/reject` — process a pending request. Withdrawals are rejected if the wallet balance is insufficient.
+- `GET /wallets/:userId/transactions` or `GET /transactions/:userId` — lists transactions newest first. `/transcation/:userId` remains available as a legacy spelling.
+
+Wallet and transaction reads are limited to admins/superadmins, the wallet owner, or the agent assigned to that user. In no-database mode (`DB_ENABLED` is not `true`), wallet and transaction routes are not available.
+
+`GET /` is an unauthenticated health check.
 
 ## Project setup
 

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { jest } from '@jest/globals';
+import { ForbiddenException } from '@nestjs/common';
 
 import { User } from '../users/entities/user.entity';
 import { Wallet } from '../wallet/entities/wallet.entity';
@@ -29,6 +30,8 @@ describe('TranscationService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TranscationService,
@@ -56,5 +59,41 @@ describe('TranscationService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('allows users to read their own transactions', async () => {
+    const user = { id: 42, type: 'user', agentId: 'AGENT001' };
+    mockUserRepository.findOne.mockResolvedValue(user);
+    mockTransactionRepository.find.mockResolvedValue([]);
+
+    await expect(
+      service.getTransactionsByUserId(42, {
+        id: 42,
+        type: 'user',
+        uniqueId: 'USER001',
+        mobile: '9000000000',
+      }),
+    ).resolves.toEqual([]);
+    expect(mockTransactionRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 42 } }),
+    );
+  });
+
+  it('prevents users from reading another users transactions', async () => {
+    mockUserRepository.findOne.mockResolvedValue({
+      id: 42,
+      type: 'user',
+      agentId: 'AGENT001',
+    });
+
+    await expect(
+      service.getTransactionsByUserId(42, {
+        id: 7,
+        type: 'user',
+        uniqueId: 'USER002',
+        mobile: '9000000001',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(mockTransactionRepository.find).not.toHaveBeenCalled();
   });
 });

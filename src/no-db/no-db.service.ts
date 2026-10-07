@@ -43,11 +43,11 @@ export class NoDbService {
     };
   }
 
-  list(currentUser: AuthUser, type?: UserType) {
+  list(currentUser: AuthUser, type?: UserType, agentId?: string) {
     const visible = this.users.filter((user) => {
       if (currentUser.type === UserType.AGENT) return user.type === UserType.USER && user.agentId === currentUser.uniqueId;
       if (currentUser.type === UserType.USER) return user.id === currentUser.id;
-      return !type || user.type === type;
+      return (!type || user.type === type) && (!agentId || user.agentId === agentId);
     });
     return visible.map((user) => this.toResponse(user));
   }

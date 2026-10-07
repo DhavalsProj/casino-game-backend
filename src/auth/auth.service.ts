@@ -2,6 +2,7 @@
 import {
   Injectable,
   ConflictException,
+  OnModuleInit,
 } from '@nestjs/common';
 
 import type { Request } from 'express';
@@ -19,7 +20,7 @@ import { LoginAudit } from './entities/login-audit.entity';
 import { SystemCredential } from './entities/system-credential.entity';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -32,6 +33,32 @@ export class AuthService {
 
     private readonly jwtService: JwtService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const credentialName =
+      process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin';
+    const existingCredential =
+      await this.systemCredentialRepository.findOne({
+        where: { credentialName },
+      });
+
+    if (existingCredential) {
+      return;
+    }
+
+    const password = process.env.SUPERADMIN_PASSWORD;
+    if (!password) {
+      throw new Error(
+        'SUPERADMIN_PASSWORD is required to initialize the superadmin database credential',
+      );
+    }
+
+    await this.systemCredentialRepository.save({
+      credentialName,
+      passwordHash: await bcrypt.hash(password, 12),
+      isActive: true,
+    });
+  }
 
   async login(loginUserDto: LoginUserDto, request?: Request) {
     // Support mobile, identifier, and teammate's id-based login
@@ -50,10 +77,6 @@ export class AuthService {
 
     const superAdminUniqueId =
       process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001';
-
-    const superAdminPassword =
-      process.env.SUPERADMIN_PASSWORD ?? 'SuperAdmin@123';
-
     const systemCredential =
       await this.systemCredentialRepository.findOne({
         where: {
@@ -67,7 +90,7 @@ export class AuthService {
           loginUserDto.password,
           systemCredential.passwordHash,
         )
-      : loginUserDto.password === superAdminPassword;
+      : false;
 
     // Super Admin login
     if (

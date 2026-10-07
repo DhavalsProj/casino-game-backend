@@ -43,38 +43,63 @@ export class WalletService {
     walletDto: CreateWalletDto,
     currentUser: AuthUser,
   ): Promise<Wallet> {
-    const amount = Number(walletDto.points ?? 0);
-
-    if (!Number.isFinite(amount) || amount < 0) {
-      throw new BadRequestException('Wallet points must be a valid non-negative number');
+    const user = await this.userRepository.findOne({
+      where: { id: walletDto.userId },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
+    this.assertCanManageWalletUser(user, currentUser, 'update this wallet');
 
+    const amountCents = this.toCents(walletDto.points, true);
     const existingWallet = await this.walletRepository.findOne({
-      where: {
-        userId: walletDto.userId,
-      },
+      where: { userId: walletDto.userId },
     });
 
-    if (existingWallet) {
-      const balance = Number(existingWallet.balance) + amount;
+    const balanceBeforeCents = existingWallet
+      ? this.toCents(existingWallet.balance, true)
+      : 0;
+    const balanceAfterCents = balanceBeforeCents + amountCents;
+    this.assertDatabaseAmount(balanceAfterCents);
 
-      existingWallet.balance = balance.toString();
-      existingWallet.updatedBy = currentUser.id;
+    const wallet =
+      existingWallet ??
+      this.walletRepository.create({
+        userId: walletDto.userId,
+        balance: '0.00',
+        createdBy: currentUser.id,
+        updatedBy: currentUser.id,
+      });
+    wallet.balance = this.fromCents(balanceAfterCents);
+    wallet.updatedBy = currentUser.id;
+    const savedWallet = await this.walletRepository.save(wallet);
 
-      return this.walletRepository.save(existingWallet);
+    if (amountCents > 0) {
+      await this.transactionRepository.save({
+        walletId: savedWallet.id,
+        userId: walletDto.userId,
+        requestId: null,
+        type: WalletTransactionType.CREDIT,
+        source: WalletTransactionSource.ADMIN_ADD,
+        amount: this.fromCents(amountCents),
+        balanceBefore: this.fromCents(balanceBeforeCents),
+        balanceAfter: this.fromCents(balanceAfterCents),
+      });
     }
 
-    const wallet = this.walletRepository.create({
-      userId: walletDto.userId,
-      balance: amount.toString(),
-      createdBy: currentUser.id,
-      updatedBy: currentUser.id,
-    });
-
-    return this.walletRepository.save(wallet);
+    return savedWallet;
   }
 
-  async getWalletByUserId(userId: number): Promise<Wallet | null> {
+  async getWalletByUserId(
+    userId: number,
+    currentUser: AuthUser,
+  ): Promise<Wallet | null> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    this.assertCanManageWalletUser(user, currentUser, 'view this wallet');
+
     return this.walletRepository.findOne({
       where: { userId },
     });
@@ -98,24 +123,30 @@ export class WalletService {
       'create this wallet request',
     );
 
-    const amount = Number(createWalletRequestDto.amount ?? 0);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Request amount must be greater than zero');
-    }
+    const amountCents = this.toCents(createWalletRequestDto.amount, false);
 
     const type =
       createWalletRequestDto.type ?? WalletRequestType.ADD_POINTS;
 
-    const wallet = await this.walletRepository.findOne({
+    let wallet = await this.walletRepository.findOne({
       where: { userId: user.id },
     });
+    if (!wallet) {
+      wallet = await this.walletRepository.save(
+        this.walletRepository.create({
+          userId: user.id,
+          balance: '0.00',
+          createdBy: currentUser.id,
+          updatedBy: currentUser.id,
+        }),
+      );
+    }
 
     const request = this.walletRequestRepository.create({
       userId: user.id,
-      walletId: wallet?.id ?? 0,
+      walletId: wallet.id,
       type,
-      amount: amount.toString(),
+      amount: this.fromCents(amountCents),
       status: WalletRequestStatus.PENDING,
     });
 
@@ -123,7 +154,7 @@ export class WalletService {
 
     await this.walletRequestActionRepository.save({
       requestId: savedRequest.id,
-      performedBy: currentUser.id,
+      performedBy: this.getActionActorId(currentUser),
       action: WalletRequestActionType.CREATED,
     });
 
@@ -186,11 +217,7 @@ export class WalletService {
       );
     }
 
-    const amountValue = Number(request.amount ?? 0);
-
-    if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      throw new BadRequestException('Request amount is invalid');
-    }
+    const amountCents = this.toCents(request.amount, false);
 
     let wallet = request.wallet;
 
@@ -202,7 +229,7 @@ export class WalletService {
       wallet = existingWallet ??
         this.walletRepository.create({
           userId: request.userId,
-          balance: '0',
+          balance: '0.00',
           createdBy: currentUser.id,
           updatedBy: currentUser.id,
         });
@@ -210,11 +237,20 @@ export class WalletService {
       wallet = await this.walletRepository.save(wallet);
     }
 
-    const balanceBefore = Number(wallet.balance ?? 0);
-    const balanceAfter = balanceBefore + amountValue;
+    const balanceBeforeCents = this.toCents(wallet.balance ?? '0', true);
+    const balanceAfterCents =
+      request.type === WalletRequestType.WITHDRAW
+        ? balanceBeforeCents - amountCents
+        : balanceBeforeCents + amountCents;
+    if (balanceAfterCents < 0) {
+      throw new BadRequestException(
+        'Insufficient wallet balance for this withdrawal',
+      );
+    }
+    this.assertDatabaseAmount(balanceAfterCents);
 
     wallet.updatedBy = currentUser.id;
-    wallet.balance = balanceAfter.toFixed(2);
+    wallet.balance = this.fromCents(balanceAfterCents);
     await this.walletRepository.save(wallet);
 
     request.wallet = wallet;
@@ -224,7 +260,7 @@ export class WalletService {
 
     await this.walletRequestActionRepository.save({
       requestId: request.id,
-      performedBy: currentUser.id,
+      performedBy: this.getActionActorId(currentUser),
       action: WalletRequestActionType.ACCEPTED,
     });
 
@@ -240,9 +276,9 @@ export class WalletService {
         request.type === WalletRequestType.ADD_POINTS
           ? WalletTransactionSource.ADMIN_ADD
           : WalletTransactionSource.WITHDRAW,
-      amount: amountValue.toString(),
-      balanceBefore: balanceBefore.toFixed(2),
-      balanceAfter: balanceAfter.toFixed(2),
+      amount: this.fromCents(amountCents),
+      balanceBefore: this.fromCents(balanceBeforeCents),
+      balanceAfter: this.fromCents(balanceAfterCents),
     });
 
     return request;
@@ -284,14 +320,23 @@ export class WalletService {
 
     await this.walletRequestActionRepository.save({
       requestId: request.id,
-      performedBy: currentUser.id,
+      performedBy: this.getActionActorId(currentUser),
       action: WalletRequestActionType.REJECTED,
     });
 
     return request;
   }
 
-  async getTransactionsByUserId(userId: number): Promise<Transaction[]> {
+  async getTransactionsByUserId(
+    userId: number,
+    currentUser: AuthUser,
+  ): Promise<Transaction[]> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    this.assertCanManageWalletUser(user, currentUser, 'view these transactions');
+
     return this.transactionRepository.find({
       where: { userId },
       order: { createdAt: 'DESC' },
@@ -299,8 +344,11 @@ export class WalletService {
     });
   }
 
-  async getWalletTransactionsByUserId(userId: number): Promise<Transaction[]> {
-    return this.getTransactionsByUserId(userId);
+  async getWalletTransactionsByUserId(
+    userId: number,
+    currentUser: AuthUser,
+  ): Promise<Transaction[]> {
+    return this.getTransactionsByUserId(userId, currentUser);
   }
 
   private async assertCanManageWalletRequestUser(
@@ -349,5 +397,42 @@ export class WalletService {
         `You are not authorized to ${action}`,
       );
     }
+  }
+
+  private toCents(value: string | number, allowZero: boolean): number {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || (!allowZero && amount === 0)) {
+      throw new BadRequestException(
+        allowZero
+          ? 'Amount must be a valid non-negative number'
+          : 'Amount must be greater than zero',
+      );
+    }
+
+    const cents = Math.round(amount * 100);
+    if (
+      !Number.isSafeInteger(cents) ||
+      Math.abs(amount - cents / 100) > 1e-8
+    ) {
+      throw new BadRequestException(
+        'Amount must be a valid number with at most two decimal places',
+      );
+    }
+    this.assertDatabaseAmount(cents);
+    return cents;
+  }
+
+  private assertDatabaseAmount(amountCents: number): void {
+    if (amountCents > 999_999_999_999_999) {
+      throw new BadRequestException('Amount exceeds the wallet limit');
+    }
+  }
+
+  private fromCents(amountCents: number): string {
+    return (amountCents / 100).toFixed(2);
+  }
+
+  private getActionActorId(currentUser: AuthUser): number | null {
+    return currentUser.id > 0 ? currentUser.id : null;
   }
 }

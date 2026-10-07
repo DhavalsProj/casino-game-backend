@@ -58,13 +58,13 @@ export class Transaction {
     onDelete: 'SET NULL',
   })
   @JoinColumn({ name: 'request_id' })
-  request: WalletRequest;
+  request: WalletRequest | null;
 
   @Column({
     name: 'request_id',
     nullable: true,
   })
-  requestId: number;
+  requestId: number | null;
 
   @Column({
     type: 'enum',
@@ -79,19 +79,25 @@ export class Transaction {
   source: WalletTransactionSource;
 
   @Column({
-    type: 'bigint',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
   })
   amount: string;
 
   @Column({
     name: 'balance_before',
-    type: 'bigint',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
   })
   balanceBefore: string;
 
   @Column({
     name: 'balance_after',
-    type: 'bigint',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
   })
   balanceAfter: string;
 

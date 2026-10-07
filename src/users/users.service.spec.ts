@@ -71,6 +71,40 @@ describe('UsersService', () => {
     expect(users.map((user) => user.type)).toEqual([UserType.USER]);
   });
 
+  it('filters admin user results by type and assigned agent ID', async () => {
+    userRepository.find.mockResolvedValue([]);
+
+    await service.findAll(
+      { type: 'superadmin' } as any,
+      UserType.USER,
+      'GK0012345',
+    );
+
+    expect(userRepository.find).toHaveBeenNthCalledWith(1, {
+      where: {
+        type: UserType.USER,
+        agentId: 'GK0012345',
+      },
+    });
+  });
+
+  it('does not let agent filtering override the logged-in agent scope', async () => {
+    userRepository.find.mockResolvedValue([]);
+
+    await service.findAll(
+      { type: UserType.AGENT, uniqueId: 'GK0000001' } as any,
+      undefined,
+      'OTHER0001',
+    );
+
+    expect(userRepository.find).toHaveBeenNthCalledWith(1, {
+      where: {
+        type: UserType.USER,
+        agentId: 'GK0000001',
+      },
+    });
+  });
+
   it('returns the generated password without persisting it', async () => {
     const result = await service.create(
       {

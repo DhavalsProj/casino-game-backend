@@ -4,7 +4,7 @@ import type { Wallet } from "./wallet.entity";
 import type { WalletRequestAction } from "./wallet_request.action.entity";
 
 export enum WalletRequestType {
-  ADD_POINTS = 'CREDIT',
+  ADD_POINTS = 'ADD_POINTS',
   WITHDRAW = 'WITHDRAW',
 }
 
@@ -42,7 +42,7 @@ export class WalletRequest {
     @Column({ type: 'enum', enum: WalletRequestType,})
     type: WalletRequestType;
 
-    @Column({ type: 'bigint',})
+    @Column({ type: 'decimal', precision: 15, scale: 2 })
     amount: string;
 
     @Column({

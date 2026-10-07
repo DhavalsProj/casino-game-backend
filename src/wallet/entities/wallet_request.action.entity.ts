@@ -39,7 +39,7 @@ export class WalletRequestAction {
         name: 'performed_by',
         nullable: true,
     })
-    performedBy: number;
+    performedBy: number | null;
 
     @Column({
         type: 'enum',

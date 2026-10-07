@@ -22,8 +22,12 @@ export class UsersController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('superadmin', 'admin', 'agent', 'user')
-  findAll(@CurrentUser() currentUser: any, @Query('type') type?: UserType) {
-    return this.usersService.findAll(currentUser, type);
+  findAll(
+    @CurrentUser() currentUser: any,
+    @Query('type') type?: UserType,
+    @Query('agentId') agentId?: string,
+  ) {
+    return this.usersService.findAll(currentUser, type, agentId);
   }
 
   @Get('agents')
@@ -52,10 +56,5 @@ export class UsersController {
   @Roles('superadmin', 'admin')
   remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
     return this.usersService.remove(+id, currentUser);
-  }
-
-  @Get('agents')
-  getAllAgents() {
-    return this.usersService.getAllAgents();
   }
 }

@@ -121,22 +121,28 @@ export class UsersService {
   async findAll(
     currentUser: AuthUser,
     type?: UserType,
+    agentId?: string,
   ): Promise<UserResponse[]> {
     let where: FindOptionsWhere<User> = {};
 
     if (currentUser.type === UserType.AGENT) {
-      const agentId = currentUser.uniqueId;
-      if (!agentId) {
+      const assignedAgentId = currentUser.uniqueId;
+      if (!assignedAgentId) {
         throw new ForbiddenException('Agent identifier is missing');
       }
       where = {
         type: UserType.USER,
-        agentId,
+        agentId: assignedAgentId,
       };
     } else if (currentUser.type === UserType.USER) {
       where = { id: currentUser.id };
-    } else if (type) {
-      where = { type };
+    } else {
+      if (type) {
+        where.type = type;
+      }
+      if (agentId) {
+        where.agentId = agentId;
+      }
     }
 
     const users = await this.userRepository.find({ where });
