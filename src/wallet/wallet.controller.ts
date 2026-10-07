@@ -23,7 +23,7 @@ export class WalletController {
 
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent')
+  @Roles('superadmin', 'agent')
   create(
     @Body() createWalletDto: CreateWalletDto,
     @CurrentUser() currentUser: AuthUser,
@@ -33,7 +33,7 @@ export class WalletController {
 
   @Post('request')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   createWalletRequest(
     @Body() createWalletRequestDto: CreateWalletRequestDto,
     @CurrentUser() currentUser: AuthUser,
@@ -43,7 +43,7 @@ export class WalletController {
 
   @Get('requests/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   getWalletRequestsForUser(
     @Param('userId', ParseIntPipe) userId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -53,7 +53,7 @@ export class WalletController {
 
   @Patch('requests/:requestId/accept')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   acceptWalletRequest(
     @Param('requestId', ParseIntPipe) requestId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -63,7 +63,7 @@ export class WalletController {
 
   @Patch('requests/:requestId/reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   rejectWalletRequest(
     @Param('requestId', ParseIntPipe) requestId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -73,7 +73,7 @@ export class WalletController {
 
   @Get('wallet/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   getWalletByUserIdLegacy(
     @Param('userId', ParseIntPipe) userId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -83,7 +83,7 @@ export class WalletController {
 
   @Get(':userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   getWalletByUserId(
     @Param('userId', ParseIntPipe) userId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -93,7 +93,7 @@ export class WalletController {
 
   @Get(':userId/transactions')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   getTransactionsByUserId(
     @Param('userId', ParseIntPipe) userId: number,
     @CurrentUser() currentUser: AuthUser,

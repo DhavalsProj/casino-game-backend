@@ -14,14 +14,14 @@ export class UsersController {
 
   @Post('create')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent')
+  @Roles('superadmin', 'agent')
   create(@Body() createUserDto: CreateUserDto, @CurrentUser() currentUser: any) {
     return this.usersService.create(createUserDto, currentUser);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   findAll(
     @CurrentUser() currentUser: any,
     @Query('type') type?: UserType,
@@ -32,28 +32,28 @@ export class UsersController {
 
   @Get('agents')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin')
+  @Roles('superadmin')
   findAgents(@CurrentUser() currentUser: any) {
     return this.usersService.findAgents(currentUser);
   }
 
   @Post('get-by-id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin','agent', 'user')
   findOne(@Body('id') id: number, @CurrentUser() currentUser: any) {
     return this.usersService.findOne(+id, currentUser);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin')
+  @Roles('superadmin',)
   update(@Param('id') id: string, @Body() changes: UpdateUserDto, @CurrentUser() currentUser: any) {
     return this.usersService.update(+id, changes, currentUser);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin')
+  @Roles('superadmin',)
   remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
     return this.usersService.remove(+id, currentUser);
   }

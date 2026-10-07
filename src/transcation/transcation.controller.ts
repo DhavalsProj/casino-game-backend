@@ -18,7 +18,7 @@ export class TranscationController {
 
   @Get(':userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles('superadmin', 'agent', 'user')
   getTransactionsByUserId(
     @Param('userId', ParseIntPipe) userId: number,
     @CurrentUser() currentUser: AuthUser,
