@@ -17,6 +17,12 @@ import { TranscationModule } from './transcation/transcation.module';
 
 const databaseEnabled = process.env.DB_ENABLED === 'true';
 
+if (process.env.NODE_ENV === 'production' && !databaseEnabled) {
+  throw new Error('DB_ENABLED=true is required in production; the in-memory fallback is for local development only.');
+}
+
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({

@@ -411,4 +411,25 @@ describe('WalletService', () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+  it('allows an agent to view its own wallet', async () => {
+    const wallet = { id: 12, userId: 5, balance: '30.00' };
+    mockUserRepository.findOne.mockResolvedValue({ id: 5, type: 'agent', uniqueId: 'AGENT001' });
+    mockWalletRepository.findOne.mockResolvedValue(wallet);
+
+    await expect(service.getWalletByUserId(5, {
+      id: 5, type: 'agent', uniqueId: 'AGENT001', agentId: 'AGENT001', mobile: '9000000000',
+    })).resolves.toBe(wallet);
+  });
+
+  it('does not allow an agent to approve its own wallet request', async () => {
+    mockWalletRequestRepository.findOne.mockResolvedValue({
+      id: 7, userId: 5, status: 'PENDING', type: 'ADD_POINTS', amount: '10.00',
+    });
+    mockUserRepository.findOne.mockResolvedValue({ id: 5, type: 'agent', uniqueId: 'AGENT001' });
+
+    await expect(service.acceptWalletRequest(7, {
+      id: 5, type: 'agent', uniqueId: 'AGENT001', agentId: 'AGENT001', mobile: '9000000000',
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(mockWalletRepository.save).not.toHaveBeenCalled();
+  });
 });

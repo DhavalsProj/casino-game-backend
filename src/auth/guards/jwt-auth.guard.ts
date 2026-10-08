@@ -22,7 +22,12 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync<AuthUser & { sub?: number }>(token);
-      request.user = { ...payload, id: payload.id ?? payload.sub! };
+      const id = payload.id ?? payload.sub;
+      if (!Number.isSafeInteger(id) || !['superadmin', 'admin', 'agent', 'user'].includes(payload.type) ||
+          (payload.type === 'agent' && !(payload.agentId ?? payload.uniqueId))) {
+        throw new Error('Invalid authentication claims');
+      }
+      request.user = { ...payload, id: id as number };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

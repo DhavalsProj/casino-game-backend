@@ -41,9 +41,10 @@ export class TranscationService {
       currentUser.type === UserType.SUPERADMIN ||
       currentUser.type === 'admin' ||
       (currentUser.type === UserType.USER && currentUser.id === user.id) ||
+      (currentUser.type === UserType.AGENT && currentUser.id === user.id) ||
       (currentUser.type === UserType.AGENT &&
         user.type === UserType.USER &&
-        user.agentId === currentUser.uniqueId);
+        user.agentId === (currentUser.agentId ?? currentUser.uniqueId));
     if (!canView) {
       throw new ForbiddenException(
         'You are not authorized to view these transactions',

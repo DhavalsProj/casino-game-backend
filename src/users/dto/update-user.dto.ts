@@ -11,4 +11,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsMobilePhone('en-IN')
   mobile?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  agentId?: string | null;
 }

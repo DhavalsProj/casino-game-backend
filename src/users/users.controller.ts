@@ -46,14 +46,14 @@ export class UsersController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin',)
+  @Roles('superadmin', 'agent', 'user')
   update(@Param('id') id: string, @Body() changes: UpdateUserDto, @CurrentUser() currentUser: any) {
     return this.usersService.update(+id, changes, currentUser);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin',)
+  @Roles('superadmin', 'agent')
   remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
     return this.usersService.remove(+id, currentUser);
   }

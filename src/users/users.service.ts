@@ -6,9 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import * as bcrypt from 'bcrypt';
 import { randomInt } from 'node:crypto';
-
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 
@@ -16,19 +14,21 @@ import { User, UserType } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { toUserResponse, UserResponse } from './user-response';
 import type { AuthUser } from '../auth/auth-user';
+import { PasswordService } from '../auth/password.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly passwordService: PasswordService,
   ) {}
 
   async create(createUserDto: CreateUserDto, currentUser: AuthUser) {
     const type =
       currentUser.type === UserType.AGENT
         ? UserType.USER
-        : createUserDto.type;
+        : createUserDto.type ?? UserType.USER;
 
     if (
       type === UserType.AGENT &&
@@ -42,7 +42,7 @@ export class UsersService {
 
     const requestedAgentId =
       currentUser.type === UserType.AGENT
-        ? currentUser.uniqueId
+        ? (currentUser.agentId ?? currentUser.uniqueId)
         : createUserDto.agentId;
 
     // Check whether mobile number is already registered
@@ -93,9 +93,8 @@ export class UsersService {
     }
 
     // Generate and hash password
-    const password = this.generatePassword();
-
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const password = this.passwordService.generateRandomPassword();
+    const passwordHash = await this.passwordService.hashPassword(password);
 
     // Create user
     const user = this.userRepository.create({
@@ -104,7 +103,8 @@ export class UsersService {
       type,
       agentId: requestedAgentId ?? null,
       uniqueId,
-      passwordHash: hashedPassword,
+      password,
+      passwordHash,
       isActive: true,
     });
 
@@ -126,7 +126,7 @@ export class UsersService {
     let where: FindOptionsWhere<User> = {};
 
     if (currentUser.type === UserType.AGENT) {
-      const assignedAgentId = currentUser.uniqueId;
+      const assignedAgentId = currentUser.agentId ?? currentUser.uniqueId;
       if (!assignedAgentId) {
         throw new ForbiddenException('Agent identifier is missing');
       }
@@ -207,8 +207,13 @@ export class UsersService {
       currentUser.type === 'admin' ||
       (
         currentUser.type === UserType.AGENT &&
+        user.type === UserType.AGENT &&
+        user.id === currentUser.id
+      ) ||
+      (
+        currentUser.type === UserType.AGENT &&
         user.type === UserType.USER &&
-        user.agentId === currentUser.uniqueId
+        user.agentId === (currentUser.agentId ?? currentUser.uniqueId)
       ) ||
       (
         currentUser.type === UserType.USER &&
@@ -226,24 +231,38 @@ export class UsersService {
 
   async update(
     id: number,
-    changes: { name?: string; mobile?: string },
+    changes: { name?: string; mobile?: string; agentId?: string | null },
     currentUser: AuthUser,
   ): Promise<UserResponse> {
-    if (
-      currentUser.type !== 'superadmin' &&
-      currentUser.type !== 'admin'
-    ) {
-      throw new ForbiddenException(
-        'Only admins can edit users',
-      );
-    }
-
     const user = await this.userRepository.findOne({
       where: { id },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    this.assertCanManageUser(user, currentUser, 'edit');
+
+    const isAdministrator = currentUser.type === 'superadmin' || currentUser.type === 'admin';
+    const updateChanges: { name?: string; mobile?: string; agentId?: string | null } = {
+      name: changes.name,
+      mobile: changes.mobile,
+    };
+
+    if (changes.agentId !== undefined) {
+      if (!isAdministrator || user.type !== UserType.USER) {
+        throw new ForbiddenException('Only admins can reassign users to an agent');
+      }
+
+      const agentId = changes.agentId?.trim() || null;
+      if (agentId) {
+        const agent = await this.userRepository.findOne({
+          where: { uniqueId: agentId, type: UserType.AGENT },
+        });
+        if (!agent) throw new NotFoundException('Agent not found');
+      }
+      updateChanges.agentId = agentId;
     }
 
     if (changes.mobile && changes.mobile !== user.mobile) {
@@ -260,10 +279,18 @@ export class UsersService {
       }
     }
 
-    Object.assign(user, changes);
+    Object.assign(user, updateChanges);
 
-    const savedUser = await this.userRepository.save(user);
+    const criteria: FindOptionsWhere<User> = isAdministrator
+      ? { id }
+      : currentUser.type === UserType.AGENT && user.type === UserType.USER
+        ? { id, type: UserType.USER, agentId: this.getAgentScopeId(currentUser) }
+        : { id, type: user.type };
+    const result = await this.userRepository.update(criteria, updateChanges);
+    if (!result.affected) throw new NotFoundException('User not found');
 
+    const savedUser = await this.userRepository.findOne({ where: { id } });
+    if (!savedUser) throw new NotFoundException('User not found');
     return toUserResponse(savedUser);
   }
 
@@ -271,16 +298,26 @@ export class UsersService {
     id: number,
     currentUser: AuthUser,
   ): Promise<void> {
-    if (
-      currentUser.type !== 'superadmin' &&
-      currentUser.type !== 'admin'
-    ) {
-      throw new ForbiddenException(
-        'Only admins can delete users',
-      );
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
 
-    const result = await this.userRepository.delete(id);
+    this.assertCanManageUser(user, currentUser, 'delete');
+
+    const isAdministrator = currentUser.type === 'superadmin' || currentUser.type === 'admin';
+    if (isAdministrator && user.type === UserType.AGENT) {
+      const assignedUsers = await this.userRepository.count({
+        where: { type: UserType.USER, agentId: user.uniqueId },
+      });
+      if (assignedUsers > 0) {
+        throw new ConflictException('Reassign or delete this agent’s users before deleting the agent');
+      }
+    }
+    const criteria: FindOptionsWhere<User> = isAdministrator
+      ? { id }
+      : { id, type: UserType.USER, agentId: this.getAgentScopeId(currentUser) };
+    const result = await this.userRepository.delete(criteria);
 
     if (!result.affected) {
       throw new NotFoundException('User not found');
@@ -293,6 +330,43 @@ export class UsersService {
         type: UserType.AGENT,
       },
     });
+  }
+
+  private getAgentScopeId(currentUser: AuthUser): string {
+    const agentId = currentUser.agentId ?? currentUser.uniqueId;
+    if (!agentId) throw new ForbiddenException('Agent identifier is missing');
+    return agentId;
+  }
+
+  private assertCanManageUser(
+    user: User,
+    currentUser: AuthUser,
+    action: 'edit' | 'delete',
+  ): void {
+    const isAdmin =
+      currentUser.type === 'superadmin' || currentUser.type === 'admin';
+    const isAssignedAgent =
+      currentUser.type === UserType.AGENT &&
+      user.type === UserType.USER &&
+      !!(currentUser.agentId ?? currentUser.uniqueId) &&
+      user.agentId === (currentUser.agentId ?? currentUser.uniqueId);
+
+    const isAgentSelf =
+      action === 'edit' &&
+      currentUser.type === UserType.AGENT &&
+      user.type === UserType.AGENT &&
+      user.id === currentUser.id;
+    const isUserSelf =
+      action === 'edit' &&
+      currentUser.type === UserType.USER &&
+      user.type === UserType.USER &&
+      user.id === currentUser.id;
+
+    if (!isAdmin && !isAssignedAgent && !isAgentSelf && !isUserSelf) {
+      throw new ForbiddenException(
+        `You are not authorized to ${action} this user`,
+      );
+    }
   }
 
   private async generateUniqueValue(
@@ -327,20 +401,6 @@ export class UsersService {
     const randomNumber = 100 + randomInt(900);
 
     return `${prefix}${randomNumber}`;
-  }
-
-  private generatePassword(): string {
-    const digits = this.generateRandomDigits(4);
-
-    const upper = String.fromCharCode(65 + randomInt(26));
-    const lower = String.fromCharCode(97 + randomInt(26));
-
-    const password = digits + upper + lower;
-
-    return password
-      .split('')
-      .sort(() => randomInt(3) - 1)
-      .join('');
   }
 
   private generateRandomDigits(length: number): string {

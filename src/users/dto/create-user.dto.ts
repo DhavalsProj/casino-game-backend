@@ -1,4 +1,4 @@
-import { IsEnum, IsMobilePhone, IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { IsEnum, IsMobilePhone, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { UserType } from '../entities/user.entity';
 
 export class CreateUserDto {
@@ -8,10 +8,11 @@ export class CreateUserDto {
   @IsMobilePhone('en-IN')
   mobile: string;
 
+  @IsOptional()
   @IsEnum(UserType)
-  type: UserType;
+  type?: UserType;
 
-  @ValidateIf((o) => o.type === UserType.USER)
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   agentId?: string;

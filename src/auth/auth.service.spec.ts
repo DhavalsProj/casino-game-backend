@@ -2,12 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { jest } from '@jest/globals';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from '../users/entities/user.entity';
 import { LoginAudit } from './entities/login-audit.entity';
 import { SystemCredential } from './entities/system-credential.entity';
+import { PasswordService } from './password.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -27,6 +28,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        PasswordService,
         {
           provide: getRepositoryToken(User),
           useValue: {},
@@ -135,7 +137,7 @@ describe('AuthService', () => {
           identifier: 'superadmin',
           password: 'environment-password',
         }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     } finally {
       if (previousIdentifier === undefined) {
         delete process.env.SUPERADMIN_IDENTIFIER;

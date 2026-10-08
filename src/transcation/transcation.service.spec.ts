@@ -96,4 +96,15 @@ describe('TranscationService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(mockTransactionRepository.find).not.toHaveBeenCalled();
   });
+  it('allows an agent to read its own transaction history', async () => {
+    mockUserRepository.findOne.mockResolvedValue({ id: 7, type: 'agent', uniqueId: 'AGENT001' });
+    mockTransactionRepository.find.mockResolvedValue([]);
+
+    await expect(service.getTransactionsByUserId(7, {
+      id: 7, type: 'agent', uniqueId: 'AGENT001', agentId: 'AGENT001', mobile: '9000000000',
+    })).resolves.toEqual([]);
+    expect(mockTransactionRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 7 } }),
+    );
+  });
 });

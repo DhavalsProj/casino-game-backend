@@ -53,7 +53,7 @@ export class WalletController {
 
   @Patch('requests/:requestId/accept')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'agent', 'user')
+  @Roles('superadmin', 'agent')
   acceptWalletRequest(
     @Param('requestId', ParseIntPipe) requestId: number,
     @CurrentUser() currentUser: AuthUser,
@@ -63,7 +63,7 @@ export class WalletController {
 
   @Patch('requests/:requestId/reject')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'agent', 'user')
+  @Roles('superadmin', 'agent')
   rejectWalletRequest(
     @Param('requestId', ParseIntPipe) requestId: number,
     @CurrentUser() currentUser: AuthUser,

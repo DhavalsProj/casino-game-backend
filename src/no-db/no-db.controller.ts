@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { NoDbService } from './no-db.service';
 import { NoDbAuthGuard } from './no-db-auth.guard';
@@ -9,8 +9,8 @@ export class NoDbAuthController {
   constructor(private readonly service: NoDbService) {}
 
   @Post('login')
-  login(@Body() body: { identifier?: string; mobile?: string; password: string }) {
-    return this.service.login(body.identifier ?? body.mobile ?? '', body.password);
+  login(@Body() body: { identifier?: string; mobile?: string; id?: string; password: string }) {
+    return this.service.login(body.identifier ?? body.mobile ?? body.id ?? '', body.password);
   }
 }
 
@@ -41,5 +41,15 @@ export class NoDbUsersController {
   @Post('get-by-id')
   getById(@Body('id') id: number, @Req() request: Request & { user: any }) {
     return this.service.getById(+id, request.user);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() changes: { name?: string; mobile?: string }, @Req() request: Request & { user: any }) {
+    return this.service.update(+id, changes, request.user);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() request: Request & { user: any }) {
+    return this.service.remove(+id, request.user);
   }
 }

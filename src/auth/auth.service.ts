@@ -1,7 +1,7 @@
 
 import {
   Injectable,
-  ConflictException,
+  UnauthorizedException,
   OnModuleInit,
 } from '@nestjs/common';
 
@@ -18,6 +18,7 @@ import { toUserResponse } from '../users/user-response';
 
 import { LoginAudit } from './entities/login-audit.entity';
 import { SystemCredential } from './entities/system-credential.entity';
+import { PasswordService } from './password.service';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -32,6 +33,7 @@ export class AuthService implements OnModuleInit {
     private readonly loginAuditRepository: Repository<LoginAudit>,
 
     private readonly jwtService: JwtService,
+    private readonly passwordService: PasswordService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -55,7 +57,7 @@ export class AuthService implements OnModuleInit {
 
     await this.systemCredentialRepository.save({
       credentialName,
-      passwordHash: await bcrypt.hash(password, 12),
+      passwordHash: await this.passwordService.hashPassword(password),
       isActive: true,
     });
   }
@@ -68,7 +70,7 @@ export class AuthService implements OnModuleInit {
       loginUserDto.id;
 
     if (!identifier) {
-      throw new ConflictException('Mobile or password is incorrect');
+      throw new UnauthorizedException('Mobile or password is incorrect');
     }
 
     // Super Admin configuration
@@ -139,7 +141,7 @@ export class AuthService implements OnModuleInit {
         request,
       );
 
-      throw new ConflictException(
+      throw new UnauthorizedException(
         'Mobile or password is incorrect',
       );
     }
@@ -166,7 +168,7 @@ export class AuthService implements OnModuleInit {
         request,
       );
 
-      throw new ConflictException(
+      throw new UnauthorizedException(
         'Mobile or password is incorrect',
       );
     }
@@ -186,7 +188,7 @@ export class AuthService implements OnModuleInit {
         request,
       );
 
-      throw new ConflictException(
+      throw new UnauthorizedException(
         'Mobile or password is incorrect',
       );
     }
@@ -206,12 +208,15 @@ export class AuthService implements OnModuleInit {
       mobile: user.mobile,
       type: user.type as UserType,
       uniqueId: user.uniqueId,
-      agentId: user.agentId,
+      agentId: user.type === UserType.AGENT ? user.uniqueId : user.agentId,
     });
 
     return {
       accessToken,
-      user: toUserResponse(user),
+      user: {
+        ...toUserResponse(user),
+        agentId: user.type === UserType.AGENT ? user.uniqueId : user.agentId,
+      },
     };
   }
 

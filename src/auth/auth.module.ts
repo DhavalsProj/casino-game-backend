@@ -11,6 +11,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { PasswordService } from './password.service';
 
 @Module({
   imports: [
@@ -24,10 +25,13 @@ import { RolesGuard } from './guards/roles.guard';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>(
-          'JWT_SECRET',
-          'development-secret-change-me',
-        ),
+        secret: (() => {
+          const secret = config.get<string>('JWT_SECRET');
+          if (process.env.NODE_ENV === 'production' && !secret) {
+            throw new Error('JWT_SECRET is required in production');
+          }
+          return secret ?? 'development-secret-change-me';
+        })(),
         signOptions: {
           expiresIn: '1h',
         },
@@ -39,12 +43,14 @@ import { RolesGuard } from './guards/roles.guard';
 
   providers: [
     AuthService,
+    PasswordService,
     JwtAuthGuard,
     RolesGuard,
   ],
 
   exports: [
     AuthService,
+    PasswordService,
     JwtModule,
     JwtAuthGuard,
     RolesGuard,

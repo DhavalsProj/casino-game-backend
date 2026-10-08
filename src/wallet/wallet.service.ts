@@ -357,6 +357,16 @@ export class WalletService {
     action: string,
   ): Promise<void> {
     if (
+      currentUser.type !== UserType.SUPERADMIN &&
+      currentUser.type !== 'admin' &&
+      currentUser.type !== UserType.AGENT
+    ) {
+      throw new ForbiddenException(
+        `You are not authorized to ${action}`,
+      );
+    }
+
+    if (
       currentUser.type === UserType.SUPERADMIN ||
       currentUser.type === 'admin'
     ) {
@@ -371,6 +381,10 @@ export class WalletService {
       throw new NotFoundException('User not found');
     }
 
+    if (user.type === UserType.AGENT && user.id === currentUser.id) {
+      throw new ForbiddenException('Agents cannot approve their own wallet requests');
+    }
+
     this.assertCanManageWalletUser(user, currentUser, action);
   }
 
@@ -381,17 +395,23 @@ export class WalletService {
   ): void {
     const isOwner =
       currentUser.type === UserType.USER && currentUser.id === user.id;
+    const agentScopeId = currentUser.agentId ?? currentUser.uniqueId;
     const isAssignedAgent =
       currentUser.type === UserType.AGENT &&
       user.type === UserType.USER &&
-      !!currentUser.uniqueId &&
-      user.agentId === currentUser.uniqueId;
+      !!agentScopeId &&
+      user.agentId === agentScopeId;
+    const isAgentSelf =
+      currentUser.type === UserType.AGENT &&
+      user.type === UserType.AGENT &&
+      currentUser.id === user.id;
 
     if (
       currentUser.type !== UserType.SUPERADMIN &&
       currentUser.type !== 'admin' &&
       !isOwner &&
-      !isAssignedAgent
+      !isAssignedAgent &&
+      !isAgentSelf
     ) {
       throw new ForbiddenException(
         `You are not authorized to ${action}`,

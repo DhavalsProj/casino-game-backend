@@ -8,6 +8,7 @@ export interface UserResponse {
   agentId: string | null;
   agentName: string | null;
   uniqueId: string | null;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ export function toUserResponse(user: User, agentName: string | null = null): Use
     agentId: user.agentId ?? null,
     agentName,
     uniqueId: user.uniqueId,
+    isActive: user.isActive,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
