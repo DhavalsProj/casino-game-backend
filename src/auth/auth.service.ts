@@ -19,6 +19,8 @@ import { toUserResponse } from '../users/user-response';
 import { LoginAudit } from './entities/login-audit.entity';
 import { SystemCredential } from './entities/system-credential.entity';
 import { PasswordService } from './password.service';
+import type { AuthUser } from './auth-user';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -151,7 +153,7 @@ export class AuthService implements OnModuleInit {
       .createQueryBuilder('user')
       .addSelect(['user.passwordHash'])
       .where(
-        '(user.mobile = :identifier OR user.uniqueId = :identifier)',
+        '(user.mobile = :identifier OR LOWER(user.uniqueId) = LOWER(:identifier))',
         { identifier },
       )
       .andWhere('user.isActive = :isActive', {
@@ -174,10 +176,9 @@ export class AuthService implements OnModuleInit {
     }
 
     // Validate password
-    const isPasswordValid = await bcrypt.compare(
-      loginUserDto.password,
-      user.passwordHash,
-    );
+    const isPasswordValid = user.passwordHash
+      ? await bcrypt.compare(loginUserDto.password, user.passwordHash)
+      : false;
 
     if (!isPasswordValid) {
       await this.recordLoginAudit(
@@ -203,21 +204,50 @@ export class AuthService implements OnModuleInit {
     );
 
     // Generate JWT token
+    const effectiveAgentId = user.type === UserType.AGENT ? user.id : user.agentId;
     const accessToken = await this.jwtService.signAsync({
       sub: user.id,
       mobile: user.mobile,
       type: user.type as UserType,
       uniqueId: user.uniqueId,
-      agentId: user.type === UserType.AGENT ? user.uniqueId : user.agentId,
+      agentId: effectiveAgentId,
     });
 
     return {
       accessToken,
       user: {
         ...toUserResponse(user),
-        agentId: user.type === UserType.AGENT ? user.uniqueId : user.agentId,
+        agentId: effectiveAgentId,
       },
     };
+  }
+
+  async changePassword(currentUser: AuthUser, dto: ChangePasswordDto): Promise<{ message: string }> {
+    if (currentUser.type === 'superadmin') {
+      const credentialName = process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin';
+      const credential = await this.systemCredentialRepository.findOne({
+        where: { credentialName, isActive: true },
+      });
+      if (!credential || !(await bcrypt.compare(dto.currentPassword, credential.passwordHash))) {
+        throw new UnauthorizedException('Current password is incorrect');
+      }
+      credential.passwordHash = await this.passwordService.hashPassword(dto.newPassword);
+      await this.systemCredentialRepository.save(credential);
+      return { message: 'Password updated successfully' };
+    }
+
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.id = :id', { id: currentUser.id })
+      .andWhere('user.isActive = :active', { active: true })
+      .getOne();
+    if (!user || !user.passwordHash || !(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    user.passwordHash = await this.passwordService.hashPassword(dto.newPassword);
+    await this.userRepository.save(user);
+    return { message: 'Password updated successfully' };
   }
 
   private async recordLoginAudit(

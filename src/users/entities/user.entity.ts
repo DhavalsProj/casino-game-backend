@@ -20,14 +20,11 @@ export class User {
   @Column({ type: 'varchar', length: 20 })
   type: UserType;
 
-  @Column({ name: 'agent_id', type: 'varchar', length: 10, nullable: true })
-  agentId: string | null;
+  @Column({ name: 'agent_id', type: 'integer', nullable: true })
+  agentId: number | null;
 
   @Column({ name: 'unique_id', unique: true, length: 10 })
   uniqueId: string;
-
-  @Column({ name: 'password', type: 'varchar', length: 255, nullable: true, select: false })
-  password: string | null;
 
   @Column({ name: 'password_hash', type: 'varchar', length: 255, select: false })
   passwordHash: string;

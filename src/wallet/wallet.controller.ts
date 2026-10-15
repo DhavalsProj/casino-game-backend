@@ -1,5 +1,6 @@
 import {
   Body,
+  Delete,
   Controller,
   Get,
   Param,
@@ -15,6 +16,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthUser } from '../auth/auth-user';
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { CreateWalletRequestDto } from './dto/create-wallet-request.dto';
+import { UpdateWalletRequestDto } from './dto/update-wallet-request.dto';
 import { WalletService } from './wallet.service';
 
 @Controller(['wallet', 'wallets'])
@@ -39,6 +41,37 @@ export class WalletController {
     @CurrentUser() currentUser: AuthUser,
   ) {
     return this.walletService.createWalletRequest(createWalletRequestDto, currentUser);
+  }
+
+  @Get('requests/detail/:requestId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'admin', 'agent', 'user')
+  getWalletRequest(
+    @Param('requestId', ParseIntPipe) requestId: number,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.walletService.getWalletRequest(requestId, currentUser);
+  }
+
+  @Patch('requests/:requestId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'admin', 'agent', 'user')
+  updateWalletRequest(
+    @Param('requestId', ParseIntPipe) requestId: number,
+    @Body() updateWalletRequestDto: UpdateWalletRequestDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.walletService.updateWalletRequest(requestId, updateWalletRequestDto, currentUser);
+  }
+
+  @Delete('requests/:requestId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'admin', 'agent', 'user')
+  deleteWalletRequest(
+    @Param('requestId', ParseIntPipe) requestId: number,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.walletService.deleteWalletRequest(requestId, currentUser);
   }
 
   @Get('requests/:userId')

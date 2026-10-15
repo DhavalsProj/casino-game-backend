@@ -44,7 +44,7 @@ export class TranscationService {
       (currentUser.type === UserType.AGENT && currentUser.id === user.id) ||
       (currentUser.type === UserType.AGENT &&
         user.type === UserType.USER &&
-        user.agentId === (currentUser.agentId ?? currentUser.uniqueId));
+        user.agentId === (currentUser.type === 'agent' ? currentUser.id : currentUser.agentId));
     if (!canView) {
       throw new ForbiddenException(
         'You are not authorized to view these transactions',

@@ -40,9 +40,9 @@ export class UsersService {
       );
     }
 
-    const requestedAgentId =
+    const requestedAgentUniqueId =
       currentUser.type === UserType.AGENT
-        ? (currentUser.agentId ?? currentUser.uniqueId)
+        ? currentUser.uniqueId
         : createUserDto.agentId;
 
     // Check whether mobile number is already registered
@@ -57,22 +57,22 @@ export class UsersService {
       throw new ConflictException('User already registered');
     }
 
-    // Validate agent for USER type
+    // Validate agent for USER type and keep its database ID for ownership.
+    let requestedAgent: User | null = null;
     if (type === UserType.USER) {
-      if (!requestedAgentId) {
+      if (!requestedAgentUniqueId) {
         throw new NotFoundException(
           'Agent ID is required for user type',
         );
       }
 
-      const agent = await this.userRepository.findOne({
-        where: {
-          uniqueId: requestedAgentId,
-          type: UserType.AGENT,
-        },
-      });
+      requestedAgent = currentUser.type === UserType.AGENT
+        ? await this.userRepository.findOne({ where: { id: currentUser.id, type: UserType.AGENT } })
+        : createUserDto.agentId
+          ? await this.userRepository.findOne({ where: { id: createUserDto.agentId, type: UserType.AGENT } })
+          : null;
 
-      if (!agent) {
+      if (!requestedAgent) {
         throw new NotFoundException('Agent not found');
       }
     }
@@ -81,10 +81,7 @@ export class UsersService {
     let uniqueId: string;
 
     if (type === UserType.USER) {
-      uniqueId = await this.generateUniqueValue(
-        () => this.generateUserId(requestedAgentId!),
-        'uniqueId',
-      );
+      uniqueId = await this.generateUniqueValue(() => this.generateUserId(), 'uniqueId');
     } else {
       uniqueId = await this.generateUniqueValue(
         () => this.generateAgentId(),
@@ -97,18 +94,32 @@ export class UsersService {
     const passwordHash = await this.passwordService.hashPassword(password);
 
     // Create user
-    const user = this.userRepository.create({
-      name: createUserDto.name,
-      mobile: createUserDto.mobile,
-      type,
-      agentId: requestedAgentId ?? null,
-      uniqueId,
-      password,
-      passwordHash,
-      isActive: true,
-    });
-
-    const savedUser = await this.userRepository.save(user);
+    let savedUser: User | null = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const user = this.userRepository.create({
+        name: createUserDto.name,
+        mobile: createUserDto.mobile,
+        type,
+        agentId: requestedAgent?.id ?? null,
+        uniqueId: attempt === 0 ? uniqueId : this.generateUserIdForType(type),
+        passwordHash,
+        isActive: true,
+      });
+      try {
+        savedUser = await this.userRepository.save(user);
+        break;
+      } catch (error) {
+        const databaseError = error as { code?: string; driverError?: { code?: string; constraint?: string } };
+        const code = databaseError.driverError?.code ?? databaseError.code;
+        const constraint = databaseError.driverError?.constraint ?? '';
+        if (code !== '23505') throw error;
+        if (/mobile/i.test(constraint)) throw new ConflictException('Mobile number is already registered');
+        const duplicateMobile = await this.userRepository.findOne({ where: { mobile: createUserDto.mobile } });
+        if (duplicateMobile) throw new ConflictException('Mobile number is already registered');
+        if (attempt === 19) throw new ConflictException('Could not generate a unique user identifier');
+      }
+    }
+    if (!savedUser) throw new ConflictException('Could not create the user');
 
     return {
       user: toUserResponse(savedUser),
@@ -126,7 +137,7 @@ export class UsersService {
     let where: FindOptionsWhere<User> = {};
 
     if (currentUser.type === UserType.AGENT) {
-      const assignedAgentId = currentUser.agentId ?? currentUser.uniqueId;
+      const assignedAgentId = this.getAgentScopeId(currentUser);
       if (!assignedAgentId) {
         throw new ForbiddenException('Agent identifier is missing');
       }
@@ -141,7 +152,8 @@ export class UsersService {
         where.type = type;
       }
       if (agentId) {
-        where.agentId = agentId;
+        const parsedAgentId = Number(agentId);
+        if (Number.isSafeInteger(parsedAgentId) && parsedAgentId > 0) where.agentId = parsedAgentId;
       }
     }
 
@@ -154,7 +166,7 @@ export class UsersService {
     });
 
     const agentNames = new Map(
-      agents.map((agent) => [agent.uniqueId, agent.name]),
+      agents.map((agent) => [agent.id, agent.name]),
     );
 
     return users
@@ -162,7 +174,7 @@ export class UsersService {
       .map((user) =>
         toUserResponse(
           user,
-          user.agentId
+          user.agentId !== null
             ? agentNames.get(user.agentId) ?? null
             : null,
         ),
@@ -213,7 +225,7 @@ export class UsersService {
       (
         currentUser.type === UserType.AGENT &&
         user.type === UserType.USER &&
-        user.agentId === (currentUser.agentId ?? currentUser.uniqueId)
+        user.agentId === this.getAgentScopeId(currentUser)
       ) ||
       (
         currentUser.type === UserType.USER &&
@@ -231,7 +243,7 @@ export class UsersService {
 
   async update(
     id: number,
-    changes: { name?: string; mobile?: string; agentId?: string | null },
+    changes: { name?: string; mobile?: string; agentId?: number | null },
     currentUser: AuthUser,
   ): Promise<UserResponse> {
     const user = await this.userRepository.findOne({
@@ -245,7 +257,7 @@ export class UsersService {
     this.assertCanManageUser(user, currentUser, 'edit');
 
     const isAdministrator = currentUser.type === 'superadmin' || currentUser.type === 'admin';
-    const updateChanges: { name?: string; mobile?: string; agentId?: string | null } = {
+    const updateChanges: { name?: string; mobile?: string; agentId?: number | null } = {
       name: changes.name,
       mobile: changes.mobile,
     };
@@ -255,10 +267,10 @@ export class UsersService {
         throw new ForbiddenException('Only admins can reassign users to an agent');
       }
 
-      const agentId = changes.agentId?.trim() || null;
+      const agentId = changes.agentId ?? null;
       if (agentId) {
         const agent = await this.userRepository.findOne({
-          where: { uniqueId: agentId, type: UserType.AGENT },
+          where: { id: agentId, type: UserType.AGENT },
         });
         if (!agent) throw new NotFoundException('Agent not found');
       }
@@ -308,7 +320,7 @@ export class UsersService {
     const isAdministrator = currentUser.type === 'superadmin' || currentUser.type === 'admin';
     if (isAdministrator && user.type === UserType.AGENT) {
       const assignedUsers = await this.userRepository.count({
-        where: { type: UserType.USER, agentId: user.uniqueId },
+        where: { type: UserType.USER, agentId: user.id },
       });
       if (assignedUsers > 0) {
         throw new ConflictException('Reassign or delete this agent’s users before deleting the agent');
@@ -332,8 +344,8 @@ export class UsersService {
     });
   }
 
-  private getAgentScopeId(currentUser: AuthUser): string {
-    const agentId = currentUser.agentId ?? currentUser.uniqueId;
+  private getAgentScopeId(currentUser: AuthUser): number {
+    const agentId = currentUser.type === UserType.AGENT ? currentUser.id : currentUser.agentId;
     if (!agentId) throw new ForbiddenException('Agent identifier is missing');
     return agentId;
   }
@@ -348,8 +360,8 @@ export class UsersService {
     const isAssignedAgent =
       currentUser.type === UserType.AGENT &&
       user.type === UserType.USER &&
-      !!(currentUser.agentId ?? currentUser.uniqueId) &&
-      user.agentId === (currentUser.agentId ?? currentUser.uniqueId);
+      !!this.getAgentScopeId(currentUser) &&
+      user.agentId === this.getAgentScopeId(currentUser);
 
     const isAgentSelf =
       action === 'edit' &&
@@ -396,11 +408,12 @@ export class UsersService {
     return `GK00${this.generateRandomDigits(6)}`;
   }
 
-  private generateUserId(agentId: string): string {
-    const prefix = agentId.substring(0, 7);
-    const randomNumber = 100 + randomInt(900);
+  private generateUserIdForType(type: UserType): string {
+    return type === UserType.AGENT ? this.generateAgentId() : this.generateUserId();
+  }
 
-    return `${prefix}${randomNumber}`;
+  private generateUserId(): string {
+    return `USR${this.generateRandomDigits(6)}`;
   }
 
   private generateRandomDigits(length: number): string {

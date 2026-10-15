@@ -8,23 +8,20 @@ export class PasswordService {
   private readonly uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   private readonly lowercase = 'abcdefghijkmnopqrstuvwxyz';
   private readonly digits = '23456789';
-  private readonly symbols = '@#$%&*!?';
-  private readonly alphabet = `${this.uppercase}${this.lowercase}${this.digits}${this.symbols}`;
 
-  generateRandomPassword(length = 14): string {
-    if (!Number.isInteger(length) || length < 4) {
-      throw new Error('Password length must be an integer of at least 4');
+  generateRandomPassword(length = 6): string {
+    if (length !== 6) {
+      throw new Error('Password length must be exactly 6 characters');
     }
 
     const password = [
       this.pick(this.uppercase),
       this.pick(this.lowercase),
       this.pick(this.digits),
-      this.pick(this.symbols),
+      this.pick(this.digits),
+      this.pick(this.digits),
+      this.pick(this.digits),
     ];
-    while (password.length < length) {
-      password.push(this.pick(this.alphabet));
-    }
 
     // Fisher-Yates with crypto.randomInt avoids biased or predictable ordering.
     for (let index = password.length - 1; index > 0; index--) {
@@ -36,6 +33,10 @@ export class PasswordService {
 
   hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, this.rounds);
+  }
+
+  isValidPassword(password: string): boolean {
+    return /^(?=.*[A-Z])(?=.*[a-z])(?=(?:.*\d){4})[A-Za-z\d]{6}$/.test(password);
   }
 
   private pick(characters: string): string {

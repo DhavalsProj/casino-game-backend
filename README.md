@@ -27,11 +27,11 @@ NestJS API for the casino game Angular frontend. It provides user creation, logi
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `JWT_SECRET`. In pgAdmin 4, connect to your PostgreSQL server and use the existing `CasinoGameDB` database. For a fresh database, execute [`database/schema.sql`](database/schema.sql) to create all application, wallet, request, and transaction tables. For an existing database, run [`database/migrate-postgres-identifiers.sql`](database/migrate-postgres-identifiers.sql) if it still has the previous PostgreSQL column names, then run [`database/migrate-wallet-entity.sql`](database/migrate-wallet-entity.sql) if wallet audit columns are missing, and finally run [`database/migrate-wallet-api.sql`](database/migrate-wallet-api.sql) to create or update the wallet request and transaction tables and decimal amount columns. Run [`database/migrate-agent-ownership-foreign-key.sql`](database/migrate-agent-ownership-foreign-key.sql) to validate existing agent assignments and prevent deleting an agent that still owns users. Set `DB_ENABLED=true` and the matching connection values in `.env` before starting the API. The default PostgreSQL port is `5432`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
+Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `JWT_SECRET`. In pgAdmin 4, connect to your PostgreSQL server and use the existing `CasinoGameDB` database. For a fresh database, execute [`database/schema.sql`](database/schema.sql). For an existing database, run [`database/migrate-postgres-identifiers.sql`](database/migrate-postgres-identifiers.sql) if needed, then [`database/migrate-agent-id-and-password-storage.sql`](database/migrate-agent-id-and-password-storage.sql) to convert legacy Agent ownership IDs, add the `password_hash` column, and remove the plaintext password column. The password hash column is nullable so the migration can run on existing accounts; accounts without a hash need a password reset. Follow with the wallet migrations as needed and [`database/migrate-agent-ownership-foreign-key.sql`](database/migrate-agent-ownership-foreign-key.sql). Set `DB_ENABLED=true` and the matching connection values in `.env` before starting the API. The default PostgreSQL port is `5432`. The Angular development server is allowed by default at `http://localhost:4200`; change `FRONTEND_URL` for another frontend origin.
 
 The PostgreSQL schema script creates the application tables and indexes. `DB_SYNCHRONIZE` is disabled by default, so apply future schema changes explicitly. The script does not copy existing records from SQL Server; SQL Server data must be migrated separately before switching production traffic. [`database/schema.sql.bak`](database/schema.sql.bak) and [`database/create-app-login.sql`](database/create-app-login.sql) are legacy SQL Server artifacts and are not used by the PostgreSQL app. For an existing database, run [`database/migrate-superadmin-user.sql`](database/migrate-superadmin-user.sql) to allow a superadmin user to have a null `unique_id`; fresh databases get this from the schema script.
 
-Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`. On first database-backed startup, the API hashes the password with bcrypt and inserts it into `SystemCredentials`; it does not overwrite an existing credential. Alternatively, run `npm run seed:superadmin` to create or update the superadmin row in `"Users"` and its credential in `"SystemCredentials"`. The seed command leaves `agent_id` and the legacy plaintext `password` field null; the database generates the ID and timestamps. Remove `SUPERADMIN_PASSWORD` from `.env` after the credential has been initialized; superadmin login uses only the database hash. Keep `.env` private. Regular user and agent passwords are bcrypt-hashed in `Users.password_hash`, with the generated plaintext returned once at account creation.
+Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`. On first database-backed startup, the API hashes the password with bcrypt and inserts it into `SystemCredentials`; it does not overwrite an existing credential. Alternatively, run `npm run seed:superadmin`. Superadmin login uses the database hash. Keep `.env` private. Regular passwords are bcrypt-hashed in `Users.password_hash`; a generated initial password is returned once in the account-creation response and is not stored in plaintext.
 
 ## API
 
@@ -39,16 +39,18 @@ Protected endpoints require bearer authentication in the Authorization header.
 
 `POST /auth/login` accepts `{ "mobile": "...", "password": "..." }` or `{ "identifier": "...", "password": "..." }` and returns `{ "accessToken": "...", "user": { ... } }`.
 
+`POST /auth/change-password` requires authentication and accepts `{ "currentPassword": "...", "newPassword": "..." }`. New passwords must be exactly six characters: one uppercase letter, one lowercase letter, and four digits.
+
 ### Users
 
-- `POST /users/create` — `{ "name": "...", "mobile": "...", "type": "agent" | "user", "agentId": "..." }`. `agentId` is required for users and ignored for agents. The response includes generated credentials once.
-- `GET /users?type=user&agentId=GK0012345` — lists users visible to the caller; admins can filter by type and agent, while agents always see only their own assigned users.
+- `POST /users/create` — `{ "name": "...", "mobile": "...", "type": "agent" | "user", "agentId": 5 }`. `agentId` is required for admin-created users and ignored for Agent-created users. It is the Agent database ID. The response includes generated credentials once.
+- `GET /users?type=user&agentId=5` — lists users visible to the caller; admins can filter by type and agent, while agents always see only their own assigned users.
 - `GET /users/agents` — admin/superadmin agent list.
 - `POST /users/get-by-id` — `{ "id": 123 }`.
 - `PATCH /users/:id` — `{ "name": "...", "mobile": "..." }`.
 - `DELETE /users/:id`.
 
-Credentials are not returned by user listing or lookup. User IDs in routes and payloads are numeric database IDs; `agentId` is the agent's `uniqueId`.
+Credentials are not returned by user listing or lookup. User IDs in routes and payloads are numeric database IDs. `agentId` is a separate numeric reference to an Agent row; each account's `uniqueId` is generated independently and is globally unique.
 
 ### Wallets and transactions
 
@@ -58,10 +60,13 @@ Both `/wallet/...` and `/wallets/...` paths are supported.
 - `GET /wallets/:userId` — returns the wallet, or `null` if it has not been created.
 - `POST /wallets/request` — `{ "userId": 123, "amount": "10.25", "type": "ADD_POINTS" | "WITHDRAW" }`. Type defaults to `ADD_POINTS`; amounts support up to two decimal places.
 - `GET /wallets/requests/:userId` — lists that user's requests.
+- `GET /wallets/requests/detail/:requestId` — returns one request the caller is authorized to view.
+- `PATCH /wallets/requests/:requestId` — updates a pending request with `{ "amount": "12.50", "type": "WITHDRAW" }`; either field may be omitted.
+- `DELETE /wallets/requests/:requestId` — deletes a pending request.
 - `PATCH /wallets/requests/:requestId/accept` and `PATCH /wallets/requests/:requestId/reject` — process a pending request. Withdrawals are rejected if the wallet balance is insufficient.
 - `GET /wallets/:userId/transactions` or `GET /transactions/:userId` — lists transactions newest first. `/transcation/:userId` remains available as a legacy spelling.
 
-Wallet and transaction reads are limited to admins/superadmins, the wallet owner, or the assigned agent. An agent can also read their own agent wallet and transactions. Request approval or rejection is limited to admins, superadmins, and agents; users may only manage their own requests. In no-database mode (`DB_ENABLED` is not `true`), wallet and transaction routes are not available.
+Wallet and transaction reads are limited to admins/superadmins, the wallet owner, or the assigned agent. An agent can also read their own agent wallet and transactions. Requests can be edited or deleted only while pending and only by an admin/superadmin, the request owner, or that user's assigned agent. Request approval or rejection is limited to admins, superadmins, and agents. In no-database mode (`DB_ENABLED` is not `true`), wallet and transaction routes are not available.
 
 `GET /` is an unauthenticated health check.
 

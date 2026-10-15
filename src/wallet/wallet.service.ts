@@ -19,6 +19,7 @@ import {
 import { WalletRequestAction, WalletRequestActionType } from './entities/wallet_request.action.entity';
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { CreateWalletRequestDto } from './dto/create-wallet-request.dto';
+import { UpdateWalletRequestDto } from './dto/update-wallet-request.dto';
 
 @Injectable()
 export class WalletService {
@@ -159,6 +160,87 @@ export class WalletService {
     });
 
     return savedRequest;
+  }
+
+  async updateWalletRequest(
+    requestId: number,
+    changes: UpdateWalletRequestDto,
+    currentUser: AuthUser,
+  ): Promise<WalletRequest> {
+    if (changes.amount === undefined && changes.type === undefined) {
+      throw new BadRequestException('Provide an amount or request type to update');
+    }
+
+    const request = await this.walletRequestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Wallet request not found');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: request.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    this.assertCanManageWalletUser(user, currentUser, 'edit this wallet request');
+
+    if (request.status !== WalletRequestStatus.PENDING) {
+      throw new BadRequestException('Only pending wallet requests can be edited');
+    }
+
+    if (changes.amount !== undefined) {
+      const amountCents = this.toCents(changes.amount, false);
+      request.amount = this.fromCents(amountCents);
+    }
+    if (changes.type !== undefined) {
+      request.type = changes.type;
+    }
+
+    return this.walletRequestRepository.save(request);
+  }
+
+  async getWalletRequest(
+    requestId: number,
+    currentUser: AuthUser,
+  ): Promise<WalletRequest> {
+    const request = await this.walletRequestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Wallet request not found');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: request.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    this.assertCanManageWalletUser(user, currentUser, 'view this wallet request');
+    return request;
+  }
+
+  async deleteWalletRequest(
+    requestId: number,
+    currentUser: AuthUser,
+  ): Promise<{ message: string }> {
+    const request = await this.walletRequestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Wallet request not found');
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: request.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    this.assertCanManageWalletUser(user, currentUser, 'delete this wallet request');
+
+    if (request.status !== WalletRequestStatus.PENDING) {
+      throw new BadRequestException('Only pending wallet requests can be deleted');
+    }
+
+    await this.walletRequestRepository.delete(request.id);
+    return { message: 'Wallet request deleted successfully' };
   }
 
   async getWalletRequestsForUser(
@@ -395,7 +477,7 @@ export class WalletService {
   ): void {
     const isOwner =
       currentUser.type === UserType.USER && currentUser.id === user.id;
-    const agentScopeId = currentUser.agentId ?? currentUser.uniqueId;
+    const agentScopeId = currentUser.type === 'agent' ? currentUser.id : currentUser.agentId;
     const isAssignedAgent =
       currentUser.type === UserType.AGENT &&
       user.type === UserType.USER &&

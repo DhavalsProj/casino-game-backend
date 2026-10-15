@@ -11,7 +11,7 @@ export class NoDbAuthGuard implements CanActivate {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) throw new UnauthorizedException('Authentication is required');
     try {
-      const payload = await this.jwtService.verifyAsync<{ id?: number; sub?: number; type?: string; uniqueId?: string; agentId?: string | null } & Record<string, unknown>>(token);
+      const payload = await this.jwtService.verifyAsync<{ id?: number; sub?: number; type?: string; uniqueId?: string; agentId?: number | null } & Record<string, unknown>>(token);
       const id = payload.id ?? payload.sub;
       if (!Number.isSafeInteger(id) || !['superadmin', 'admin', 'agent', 'user'].includes(payload.type ?? '') ||
           (payload.type === 'agent' && !(payload.agentId ?? payload.uniqueId))) {

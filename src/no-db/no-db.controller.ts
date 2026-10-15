@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { NoDbService } from './no-db.service';
 import { NoDbAuthGuard } from './no-db-auth.guard';
 import { UserType } from '../users/entities/user.entity';
+import { ChangePasswordDto } from '../auth/dto/change-password.dto';
 
 @Controller('auth')
 export class NoDbAuthController {
@@ -11,6 +12,12 @@ export class NoDbAuthController {
   @Post('login')
   login(@Body() body: { identifier?: string; mobile?: string; id?: string; password: string }) {
     return this.service.login(body.identifier ?? body.mobile ?? body.id ?? '', body.password);
+  }
+
+  @Post('change-password')
+  @UseGuards(NoDbAuthGuard)
+  changePassword(@Body() body: ChangePasswordDto, @Req() request: Request & { user: any }) {
+    return this.service.changePassword(request.user, body.currentPassword, body.newPassword);
   }
 }
 
@@ -34,7 +41,7 @@ export class NoDbUsersController {
   }
 
   @Post('create')
-  create(@Body() body: { name: string; mobile: string; type?: UserType; agentId?: string }, @Req() request: Request & { user: any }) {
+  create(@Body() body: { name: string; mobile: string; type?: UserType; agentId?: number }, @Req() request: Request & { user: any }) {
     return this.service.create(body, request.user);
   }
 

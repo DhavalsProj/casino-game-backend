@@ -32,14 +32,13 @@ async function seedSuperadmin() {
 
       const userResult = await client.query(
         `INSERT INTO "Users"
-           (name, mobile, type, agent_id, unique_id, password, password_hash, is_active)
-         VALUES ('Super Admin', $1, 'superadmin', NULL, $2, NULL, $3, TRUE)
+           (name, mobile, type, agent_id, unique_id, password_hash, is_active)
+         VALUES ('Super Admin', $1, 'superadmin', NULL, $2, $3, TRUE)
          ON CONFLICT (mobile) DO UPDATE
          SET name = EXCLUDED.name,
              type = EXCLUDED.type,
              agent_id = NULL,
              unique_id = EXCLUDED.unique_id,
-             password = NULL,
              password_hash = EXCLUDED.password_hash,
              is_active = TRUE,
              updated_at = CURRENT_TIMESTAMP

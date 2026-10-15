@@ -5,7 +5,7 @@ export interface UserResponse {
   name: string;
   mobile: string;
   type: string;
-  agentId: string | null;
+  agentId: number | null;
   agentName: string | null;
   uniqueId: string | null;
   isActive: boolean;

@@ -1,4 +1,4 @@
-import { IsMobilePhone, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsInt, IsMobilePhone, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -13,7 +13,7 @@ export class UpdateUserDto {
   mobile?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(10)
-  agentId?: string | null;
+  @IsInt()
+  @Min(1)
+  agentId?: number | null;
 }

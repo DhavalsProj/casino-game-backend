@@ -3,9 +3,8 @@ CREATE TABLE IF NOT EXISTS "Users" (
     name VARCHAR(100) NOT NULL,
     mobile VARCHAR(15) NOT NULL UNIQUE,
     type VARCHAR(20) NOT NULL CHECK (type IN ('superadmin', 'agent', 'user')),
-    agent_id VARCHAR(10),
+    agent_id INTEGER,
     unique_id VARCHAR(10) UNIQUE,
-    password VARCHAR(255),
     password_hash VARCHAR(255) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -16,13 +15,10 @@ CREATE INDEX IF NOT EXISTS ix_users_agent_id
     ON "Users" (agent_id);
 
 DO $$ BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'fk_users_agent_id_users_unique_id'
-    ) THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_agent_id_users_id') THEN
         ALTER TABLE "Users"
-            ADD CONSTRAINT fk_users_agent_id_users_unique_id
-            FOREIGN KEY (agent_id) REFERENCES "Users" (unique_id)
+            ADD CONSTRAINT fk_users_agent_id_users_id
+            FOREIGN KEY (agent_id) REFERENCES "Users" (id)
             ON DELETE RESTRICT;
     END IF;
 END $$;
