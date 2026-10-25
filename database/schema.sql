@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS wallet_request_actions (
     request_id INTEGER NOT NULL REFERENCES wallet_requests (id) ON DELETE CASCADE,
     performed_by INTEGER REFERENCES "Users" (id) ON DELETE SET NULL,
     action wallet_request_actions_action_enum NOT NULL,
+    balance_before NUMERIC(15,2),
+    balance_after NUMERIC(15,2),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

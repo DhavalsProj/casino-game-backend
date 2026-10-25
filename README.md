@@ -31,6 +31,12 @@ Copy `.env.example` to `.env` and set the PostgreSQL credentials and a strong `J
 
 The PostgreSQL schema script creates the application tables and indexes. `DB_SYNCHRONIZE` is disabled by default, so apply future schema changes explicitly. The script does not copy existing records from SQL Server; SQL Server data must be migrated separately before switching production traffic. [`database/schema.sql.bak`](database/schema.sql.bak) and [`database/create-app-login.sql`](database/create-app-login.sql) are legacy SQL Server artifacts and are not used by the PostgreSQL app. For an existing database, run [`database/migrate-superadmin-user.sql`](database/migrate-superadmin-user.sql) to allow a superadmin user to have a null `unique_id`; fresh databases get this from the schema script.
 
+For Fun Target endpoints, run [`database/migrate-fun-target.sql`](database/migrate-fun-target.sql) once against the configured PostgreSQL database before using the API. It creates the configuration, round, bet, Joker schedule, and result audit tables. The migration is safe to run again.
+
+For accurate before/after balances on rejected wallet requests, run [`database/migrate-wallet-request-balance-snapshot.sql`](database/migrate-wallet-request-balance-snapshot.sql). New rejection actions record an unchanged balance snapshot; the migration also fills legacy snapshots from the nearest wallet ledger balance when possible.
+
+To apply both of these recent database changes with one file, run [`database/migrate-current-db-changes.sql`](database/migrate-current-db-changes.sql) against the existing PostgreSQL database. It is safe to rerun.
+
 Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`. On first database-backed startup, the API hashes the password with bcrypt and inserts it into `SystemCredentials`; it does not overwrite an existing credential. Alternatively, run `npm run seed:superadmin`. Superadmin login uses the database hash. Keep `.env` private. Regular passwords are bcrypt-hashed in `Users.password_hash`; a generated initial password is returned once in the account-creation response and is not stored in plaintext.
 
 ## API
@@ -65,6 +71,7 @@ Both `/wallet/...` and `/wallets/...` paths are supported.
 - `DELETE /wallets/requests/:requestId` — deletes a pending request.
 - `PATCH /wallets/requests/:requestId/accept` and `PATCH /wallets/requests/:requestId/reject` — process a pending request. Withdrawals are rejected if the wallet balance is insufficient.
 - `GET /wallets/:userId/transactions` or `GET /transactions/:userId` — lists transactions newest first. `/transcation/:userId` remains available as a legacy spelling.
+- `GET /transactions/agent/:agentId` — returns combined transaction histories for all users assigned to the selected agent. Only admins and superadmins may call it; `agentId` is the agent's numeric database ID.
 
 Wallet and transaction reads are limited to admins/superadmins, the wallet owner, or the assigned agent. An agent can also read their own agent wallet and transactions. Requests can be edited or deleted only while pending and only by an admin/superadmin, the request owner, or that user's assigned agent. Request approval or rejection is limited to admins, superadmins, and agents. In no-database mode (`DB_ENABLED` is not `true`), wallet and transaction routes are not available.
 

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import type { AuthUser } from '../auth/auth-user';
 import { User, UserType } from '../users/entities/user.entity';
@@ -20,6 +20,7 @@ import { WalletRequestAction, WalletRequestActionType } from './entities/wallet_
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { CreateWalletRequestDto } from './dto/create-wallet-request.dto';
 import { UpdateWalletRequestDto } from './dto/update-wallet-request.dto';
+import { combineTransactionHistory, TransactionHistoryEntry } from '../transcation/transaction-history';
 
 @Injectable()
 export class WalletService {
@@ -270,166 +271,196 @@ export class WalletService {
   async acceptRequest(
     requestId: number,
     currentUser: AuthUser,
-  ): Promise<WalletRequest> {
+  ): Promise<WalletRequest & { walletBalance: string }> {
     return this.acceptWalletRequest(requestId, currentUser);
   }
 
   async acceptWalletRequest(
     requestId: number,
     currentUser: AuthUser,
-  ): Promise<WalletRequest> {
-    const request = await this.walletRequestRepository.findOne({
-      where: { id: requestId },
-      relations: { wallet: true },
-    });
+  ): Promise<WalletRequest & { walletBalance: string }> {
+    return this.processWalletRequestAcceptance(requestId, currentUser, false);
+  }
 
-    if (!request) {
-      throw new NotFoundException('Wallet request not found');
+  async acceptOwnWalletRequest(
+    requestId: number,
+    currentUser: AuthUser,
+  ): Promise<WalletRequest & { walletBalance: string }> {
+    return this.processWalletRequestAcceptance(requestId, currentUser, true);
+  }
+
+  async respondToOwnWalletRequest(
+    requestId: number,
+    action: 'ACCEPT' | 'REJECT',
+    currentUser: AuthUser,
+  ): Promise<WalletRequest & { walletBalance: string }> {
+    if (action === 'ACCEPT') {
+      return this.acceptOwnWalletRequest(requestId, currentUser);
     }
+    return this.rejectWalletRequest(requestId, currentUser);
+  }
 
-    await this.assertCanManageWalletRequestUser(
-      request.userId,
-      currentUser,
-      'accept this wallet request',
-    );
-
-    if (request.status !== WalletRequestStatus.PENDING) {
-      throw new BadRequestException(
-        `Wallet request is already ${request.status.toLowerCase()}`,
-      );
-    }
-
-    const amountCents = this.toCents(request.amount, false);
-
-    let wallet = request.wallet;
-
-    if (!wallet) {
-      const existingWallet = await this.walletRepository.findOne({
-        where: { userId: request.userId },
+  private async processWalletRequestAcceptance(
+    requestId: number,
+    currentUser: AuthUser,
+    creditOnAcceptance: boolean,
+  ): Promise<WalletRequest & { walletBalance: string }> {
+    return this.transactionRepository.manager.transaction(async (manager) => {
+      const requests = manager.getRepository(WalletRequest);
+      const wallets = manager.getRepository(Wallet);
+      const request = await requests.findOne({
+        where: { id: requestId },
+        lock: { mode: 'pessimistic_write' },
       });
+      if (!request) throw new NotFoundException('Wallet request not found');
 
-      wallet = existingWallet ??
-        this.walletRepository.create({
+      await this.assertCanManageWalletRequestUser(
+        request.userId,
+        currentUser,
+        'accept this wallet request',
+      );
+      if (request.status !== WalletRequestStatus.PENDING) {
+        throw new BadRequestException(
+          `Wallet request is already ${request.status.toLowerCase()}`,
+        );
+      }
+
+      const amountCents = this.toCents(request.amount, false);
+      let wallet = await wallets.findOne({
+        where: { userId: request.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!wallet) {
+        wallet = wallets.create({
           userId: request.userId,
           balance: '0.00',
           createdBy: currentUser.id,
           updatedBy: currentUser.id,
         });
+      }
 
-      wallet = await this.walletRepository.save(wallet);
-    }
+      const balanceBeforeCents = this.toCents(wallet.balance ?? '0', true);
+      // The user's app confirms incoming points by accepting their pending
+      // request. Administrative withdrawal processing keeps its existing debit rule.
+      const isCredit = creditOnAcceptance || request.type === WalletRequestType.ADD_POINTS;
+      const balanceAfterCents = isCredit
+        ? balanceBeforeCents + amountCents
+        : balanceBeforeCents - amountCents;
+      if (balanceAfterCents < 0) {
+        throw new BadRequestException('Insufficient wallet balance for this withdrawal');
+      }
+      this.assertDatabaseAmount(balanceAfterCents);
 
-    const balanceBeforeCents = this.toCents(wallet.balance ?? '0', true);
-    const balanceAfterCents =
-      request.type === WalletRequestType.WITHDRAW
-        ? balanceBeforeCents - amountCents
-        : balanceBeforeCents + amountCents;
-    if (balanceAfterCents < 0) {
-      throw new BadRequestException(
-        'Insufficient wallet balance for this withdrawal',
-      );
-    }
-    this.assertDatabaseAmount(balanceAfterCents);
-
-    wallet.updatedBy = currentUser.id;
-    wallet.balance = this.fromCents(balanceAfterCents);
-    await this.walletRepository.save(wallet);
-
-    request.wallet = wallet;
-    request.walletId = wallet.id;
-    request.status = WalletRequestStatus.ACCEPTED;
-    await this.walletRequestRepository.save(request);
-
-    await this.walletRequestActionRepository.save({
-      requestId: request.id,
-      performedBy: this.getActionActorId(currentUser),
-      action: WalletRequestActionType.ACCEPTED,
-    });
-
-    await this.transactionRepository.save({
-      walletId: wallet.id,
-      userId: request.userId,
-      requestId: request.id,
-      type:
-        request.type === WalletRequestType.ADD_POINTS
+      wallet.updatedBy = currentUser.id;
+      wallet.balance = this.fromCents(balanceAfterCents);
+      wallet = await wallets.save(wallet);
+      request.wallet = wallet;
+      request.walletId = wallet.id;
+      request.status = WalletRequestStatus.ACCEPTED;
+      await requests.save(request);
+      await manager.getRepository(WalletRequestAction).save({
+        requestId: request.id,
+        performedBy: this.getActionActorId(currentUser),
+        action: WalletRequestActionType.ACCEPTED,
+      });
+      await manager.getRepository(Transaction).save({
+        walletId: wallet.id,
+        userId: request.userId,
+        requestId: request.id,
+        type: isCredit
           ? WalletTransactionType.CREDIT
           : WalletTransactionType.DEBIT,
-      source:
-        request.type === WalletRequestType.ADD_POINTS
+        source: isCredit
           ? WalletTransactionSource.ADMIN_ADD
           : WalletTransactionSource.WITHDRAW,
-      amount: this.fromCents(amountCents),
-      balanceBefore: this.fromCents(balanceBeforeCents),
-      balanceAfter: this.fromCents(balanceAfterCents),
+        amount: this.fromCents(amountCents),
+        balanceBefore: this.fromCents(balanceBeforeCents),
+        balanceAfter: this.fromCents(balanceAfterCents),
+        description: creditOnAcceptance
+          ? `User accepted pending request ${request.id}; points credited`
+          : undefined,
+      });
+      return Object.assign(request, { walletBalance: wallet.balance });
     });
-
-    return request;
   }
 
   async rejectRequest(
     requestId: number,
     currentUser: AuthUser,
-  ): Promise<WalletRequest> {
+  ): Promise<WalletRequest & { walletBalance: string }> {
     return this.rejectWalletRequest(requestId, currentUser);
   }
 
   async rejectWalletRequest(
     requestId: number,
     currentUser: AuthUser,
-  ): Promise<WalletRequest> {
-    const request = await this.walletRequestRepository.findOne({
-      where: { id: requestId },
-    });
+  ): Promise<WalletRequest & { walletBalance: string }> {
+    return this.transactionRepository.manager.transaction(async (manager) => {
+      const requests = manager.getRepository(WalletRequest);
+      const request = await requests.findOne({
+        where: { id: requestId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) throw new NotFoundException('Wallet request not found');
 
-    if (!request) {
-      throw new NotFoundException('Wallet request not found');
-    }
-
-    await this.assertCanManageWalletRequestUser(
-      request.userId,
-      currentUser,
-      'reject this wallet request',
-    );
-
-    if (request.status !== WalletRequestStatus.PENDING) {
-      throw new BadRequestException(
-        `Wallet request is already ${request.status.toLowerCase()}`,
+      await this.assertCanManageWalletRequestUser(
+        request.userId,
+        currentUser,
+        'reject this wallet request',
       );
-    }
+      if (request.status !== WalletRequestStatus.PENDING) {
+        throw new BadRequestException(
+          `Wallet request is already ${request.status.toLowerCase()}`,
+        );
+      }
 
-    request.status = WalletRequestStatus.REJECTED;
-    await this.walletRequestRepository.save(request);
-
-    await this.walletRequestActionRepository.save({
-      requestId: request.id,
-      performedBy: this.getActionActorId(currentUser),
-      action: WalletRequestActionType.REJECTED,
+      const wallet = await manager.getRepository(Wallet).findOne({
+        where: { userId: request.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const balanceAtDecision = wallet?.balance ?? '0.00';
+      request.status = WalletRequestStatus.REJECTED;
+      await requests.save(request);
+      await manager.getRepository(WalletRequestAction).save({
+        requestId: request.id,
+        performedBy: this.getActionActorId(currentUser),
+        action: WalletRequestActionType.REJECTED,
+        balanceBefore: balanceAtDecision,
+        balanceAfter: balanceAtDecision,
+      });
+      return Object.assign(request, { walletBalance: balanceAtDecision });
     });
-
-    return request;
   }
 
   async getTransactionsByUserId(
     userId: number,
     currentUser: AuthUser,
-  ): Promise<Transaction[]> {
+  ): Promise<TransactionHistoryEntry[]> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
     this.assertCanManageWalletUser(user, currentUser, 'view these transactions');
 
-    return this.transactionRepository.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      relations: { wallet: true, request: true },
-    });
+    const [transactions, requests] = await Promise.all([
+      this.transactionRepository.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+        relations: { wallet: true, request: true },
+      }),
+      this.walletRequestRepository.find({
+        where: { userId, status: In(['ACCEPTED', 'REJECTED']) },
+        relations: { actions: true },
+        order: { updatedAt: 'DESC' },
+      }),
+    ]);
+    return combineTransactionHistory(transactions, requests);
   }
 
   async getWalletTransactionsByUserId(
     userId: number,
     currentUser: AuthUser,
-  ): Promise<Transaction[]> {
+  ): Promise<TransactionHistoryEntry[]> {
     return this.getTransactionsByUserId(userId, currentUser);
   }
 
@@ -438,6 +469,13 @@ export class WalletService {
     currentUser: AuthUser,
     action: string,
   ): Promise<void> {
+    if (currentUser.type === UserType.USER) {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) throw new NotFoundException('User not found');
+      this.assertCanManageWalletUser(user, currentUser, action);
+      return;
+    }
+
     if (
       currentUser.type !== UserType.SUPERADMIN &&
       currentUser.type !== 'admin' &&

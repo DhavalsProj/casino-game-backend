@@ -413,7 +413,7 @@ export class UsersService {
   }
 
   private generateUserId(): string {
-    return `USR${this.generateRandomDigits(6)}`;
+    return `GK00${this.generateRandomDigits(6)}`;
   }
 
   private generateRandomDigits(length: number): string {

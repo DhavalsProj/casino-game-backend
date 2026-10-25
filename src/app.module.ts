@@ -14,6 +14,7 @@ import { AuthModule } from './auth/auth.module';
 import { WalletModule } from './wallet/wallet.module';
 import { NoDbModule } from './no-db/no-db.module';
 import { TranscationModule } from './transcation/transcation.module';
+import { FunTargetModule } from './fun-target/fun-target.module';
 
 const databaseEnabled = process.env.DB_ENABLED === 'true';
 
@@ -58,6 +59,7 @@ if (process.env.NODE_ENV === 'production' && !databaseEnabled) {
           AuthModule,
           WalletModule,
           TranscationModule,
+          FunTargetModule,
         ]
       : [NoDbModule]),
   ],

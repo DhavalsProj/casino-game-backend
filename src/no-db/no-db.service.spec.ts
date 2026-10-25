@@ -14,17 +14,19 @@ describe('NoDbService account creation', () => {
       { type: 'superadmin' } as any,
     );
     const agent = (service as any).users.find((item: any) => item.uniqueId === agentResult.user.uniqueId);
-    expect(agent.password).toBe(agentResult.credentials.password);
-    await expect(bcrypt.compare(agent.password, agent.passwordHash)).resolves.toBe(true);
+    expect(agentResult.user.uniqueId).toMatch(/^GK00\d{6}$/);
+    expect(agent).not.toHaveProperty('password');
+    await expect(bcrypt.compare(agentResult.credentials.password, agent.passwordHash)).resolves.toBe(true);
 
     const userResult = await service.create(
       { name: 'Created User', mobile: '9876543213', type: UserType.AGENT, agentId: 'OTHER' },
       { id: agent.id, type: UserType.AGENT, uniqueId: agent.uniqueId, agentId: agent.uniqueId } as any,
     );
     const user = (service as any).users.find((item: any) => item.uniqueId === userResult.user.uniqueId);
-    expect(user).toMatchObject({ type: UserType.USER, agentId: agent.uniqueId });
-    expect(user.password).toBe(userResult.credentials.password);
-    await expect(bcrypt.compare(user.password, user.passwordHash)).resolves.toBe(true);
+    expect(user).toMatchObject({ type: UserType.USER, agentId: agent.id });
+    expect(userResult.user.uniqueId).toMatch(/^GK00\d{6}$/);
+    expect(user).not.toHaveProperty('password');
+    await expect(bcrypt.compare(userResult.credentials.password, user.passwordHash)).resolves.toBe(true);
     expect(userResult).not.toHaveProperty('passwordHash');
     expect(userResult).not.toHaveProperty('user.password');
   });

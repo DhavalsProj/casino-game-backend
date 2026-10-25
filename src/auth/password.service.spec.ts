@@ -4,15 +4,15 @@ import { PasswordService } from './password.service';
 describe('PasswordService', () => {
   const service = new PasswordService();
 
-  it('generates a strong random password and hashes that same value', async () => {
+  it('generates a six-character password with exactly four digits and hashes that value', async () => {
     const password = service.generateRandomPassword();
     const passwordHash = await service.hashPassword(password);
 
-    expect(password).toHaveLength(14);
-    expect(password).toMatch(/[A-Z]/);
-    expect(password).toMatch(/[a-z]/);
-    expect(password).toMatch(/[2-9]/);
-    expect(password).toMatch(/[@#$%&*!?]/);
+    expect(password).toHaveLength(6);
+    expect(password).toMatch(/^(?=(?:.*\d){4})[A-Za-z\d]{6}$/);
+    expect((password.match(/[0-9]/g) ?? []).length).toBe(4);
+    expect((password.match(/[A-Z]/g) ?? []).length).toBe(1);
+    expect((password.match(/[a-z]/g) ?? []).length).toBe(1);
     await expect(bcrypt.compare(password, passwordHash)).resolves.toBe(true);
   });
 

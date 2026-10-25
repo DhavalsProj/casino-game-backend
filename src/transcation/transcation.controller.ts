@@ -16,14 +16,24 @@ import { TranscationService } from './transcation.service';
 export class TranscationController {
   constructor(private readonly transcationService: TranscationService) {}
 
+  @Get('agent/:agentId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'admin')
+  getTransactionsByAgentId(
+    @Param('agentId', ParseIntPipe) agentId: number,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.transcationService.getTransactionsByAgentId(agentId, currentUser);
+  }
+
   @Get(':userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('superadmin', 'agent', 'user')
   getTransactionsByUserId(
-    @Param('userId', ParseIntPipe) userId: number,
+    @Param('userId') userId: string,
     @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.transcationService.getTransactionsByUserId(
+    return this.transcationService.getTransactionsByAccountIdentifier(
       userId,
       currentUser,
     );

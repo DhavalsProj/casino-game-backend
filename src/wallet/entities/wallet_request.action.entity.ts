@@ -47,6 +47,12 @@ export class WalletRequestAction {
     })
     action: WalletRequestActionType;
 
+    @Column({ name: 'balance_before', type: 'decimal', precision: 15, scale: 2, nullable: true })
+    balanceBefore: string | null;
+
+    @Column({ name: 'balance_after', type: 'decimal', precision: 15, scale: 2, nullable: true })
+    balanceAfter: string | null;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 }

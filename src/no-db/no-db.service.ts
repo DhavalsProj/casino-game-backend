@@ -30,7 +30,7 @@ export class NoDbService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     this.superAdminPasswordHash = await this.passwordService.hashPassword(process.env.SUPERADMIN_PASSWORD ?? 'SuperAdmin@123');
     await this.addSample('Aarav Mehta', '9876543210', UserType.AGENT, null, 'GK00123456', 'Agent@123');
-    await this.addSample('John Carter', '9876543211', UserType.USER, 1, 'USR001237', 'User@123');
+    await this.addSample('John Carter', '9876543211', UserType.USER, 1, 'GK00001237', 'User@123');
   }
 
   async login(identifier: string, password: string) {
@@ -153,7 +153,7 @@ export class NoDbService implements OnModuleInit {
   private generateUniqueId(type: UserType): string {
     let candidate = '';
     do {
-      candidate = type === UserType.AGENT ? `GK00${this.randomDigits(6)}` : `USR${this.randomDigits(6)}`;
+      candidate = `GK00${this.randomDigits(6)}`;
     } while (this.users.some((user) => user.uniqueId === candidate));
     return candidate;
   }

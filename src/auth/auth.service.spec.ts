@@ -12,6 +12,7 @@ import { PasswordService } from './password.service';
 
 describe('AuthService', () => {
   let service: AuthService;
+  let userRepository: { createQueryBuilder: jest.Mock };
   let systemCredentialRepository: {
     findOne: jest.Mock;
     save: jest.Mock;
@@ -24,6 +25,7 @@ describe('AuthService', () => {
       save: jest.fn(),
     };
     loginAuditRepository = { save: jest.fn() };
+    userRepository = { createQueryBuilder: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -31,7 +33,7 @@ describe('AuthService', () => {
         PasswordService,
         {
           provide: getRepositoryToken(User),
-          useValue: {},
+          useValue: userRepository,
         },
         {
           provide: getRepositoryToken(SystemCredential),
@@ -149,6 +151,50 @@ describe('AuthService', () => {
       } else {
         process.env.SUPERADMIN_PASSWORD = previousPassword;
       }
+    }
+  });
+
+  it('authenticates a generated user credential by comparing the stored bcrypt hash', async () => {
+    const previousIdentifier = process.env.SUPERADMIN_IDENTIFIER;
+    process.env.SUPERADMIN_IDENTIFIER = 'master-account';
+    const password = '5A71k2';
+    const passwordHash = await bcrypt.hash(password, 4);
+    const user = {
+      id: 12,
+      name: 'Credential User',
+      mobile: '9876543212',
+      type: 'user',
+      agentId: 5,
+      uniqueId: 'GK00123456',
+      passwordHash,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const queryBuilder = {
+      addSelect: jest.fn(),
+      where: jest.fn(),
+      andWhere: jest.fn(),
+      getOne: jest.fn().mockResolvedValue(user),
+    };
+    queryBuilder.addSelect.mockReturnValue(queryBuilder);
+    queryBuilder.where.mockReturnValue(queryBuilder);
+    queryBuilder.andWhere.mockReturnValue(queryBuilder);
+    userRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+    loginAuditRepository.save.mockResolvedValue(undefined);
+    const signAsync = jest.fn().mockResolvedValue('signed-token');
+    (service as any).jwtService.signAsync = signAsync;
+
+    try {
+      const result = await service.login({ identifier: 'GK00123456', password });
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.user.uniqueId).toBe('GK00123456');
+      expect(queryBuilder.addSelect).toHaveBeenCalledWith(['user.passwordHash']);
+      expect(signAsync).toHaveBeenCalled();
+      expect(loginAuditRepository.save).toHaveBeenCalledWith(expect.objectContaining({ loginStatus: 'SUCCESS' }));
+    } finally {
+      if (previousIdentifier === undefined) delete process.env.SUPERADMIN_IDENTIFIER;
+      else process.env.SUPERADMIN_IDENTIFIER = previousIdentifier;
     }
   });
 });

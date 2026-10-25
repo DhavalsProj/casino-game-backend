@@ -17,6 +17,7 @@ import type { AuthUser } from '../auth/auth-user';
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { CreateWalletRequestDto } from './dto/create-wallet-request.dto';
 import { UpdateWalletRequestDto } from './dto/update-wallet-request.dto';
+import { RespondWalletRequestDto } from './dto/respond-wallet-request.dto';
 import { WalletService } from './wallet.service';
 
 @Controller(['wallet', 'wallets'])
@@ -92,6 +93,17 @@ export class WalletController {
     @CurrentUser() currentUser: AuthUser,
   ) {
     return this.walletService.acceptWalletRequest(requestId, currentUser);
+  }
+
+  @Post('requests/:requestId/action')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user')
+  respondToOwnWalletRequest(
+    @Param('requestId', ParseIntPipe) requestId: number,
+    @Body() dto: RespondWalletRequestDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.walletService.respondToOwnWalletRequest(requestId, dto.action, currentUser);
   }
 
   @Patch('requests/:requestId/reject')
