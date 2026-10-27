@@ -1,60 +1,78 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UserType } from './entities/user.entity';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
+import { UsersService } from "./users.service";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { UserType } from "./entities/user.entity";
+import { UpdateUserDto } from "./dto/update-user.dto";
+import type { AuthUser } from "../auth/auth-user";
 
-@Controller('users')
+@Controller("users")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post('create')
+  @Post("create")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent')
-  create(@Body() createUserDto: CreateUserDto, @CurrentUser() currentUser: any) {
+  @Roles("superadmin", "admin", "agent")
+  create(
+    @Body() createUserDto: CreateUserDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
     return this.usersService.create(createUserDto, currentUser);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
+  @Roles("superadmin", "admin", "agent", "user")
   findAll(
-    @CurrentUser() currentUser: any,
-    @Query('type') type?: UserType,
-    @Query('agentId') agentId?: string,
+    @CurrentUser() currentUser: AuthUser,
+    @Query("type") type?: UserType,
+    @Query("agentId") agentId?: string,
   ) {
     return this.usersService.findAll(currentUser, type, agentId);
   }
 
-  @Get('agents')
+  @Get("agents")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin')
-  findAgents(@CurrentUser() currentUser: any) {
+  @Roles("superadmin", "admin")
+  findAgents(@CurrentUser() currentUser: AuthUser) {
     return this.usersService.findAgents(currentUser);
   }
 
-  @Post('get-by-id')
+  @Post("get-by-id")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
-  findOne(@Body('id') id: number, @CurrentUser() currentUser: any) {
+  @Roles("superadmin", "admin", "agent", "user")
+  findOne(@Body("id") id: number, @CurrentUser() currentUser: AuthUser) {
     return this.usersService.findOne(+id, currentUser);
   }
 
-  @Patch(':id')
+  @Patch(":id")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent', 'user')
-  update(@Param('id') id: string, @Body() changes: UpdateUserDto, @CurrentUser() currentUser: any) {
+  @Roles("superadmin", "admin", "agent", "user")
+  update(
+    @Param("id") id: string,
+    @Body() changes: UpdateUserDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
     return this.usersService.update(+id, changes, currentUser);
   }
 
-  @Delete(':id')
+  @Delete(":id")
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('superadmin', 'admin', 'agent')
-  remove(@Param('id') id: string, @CurrentUser() currentUser: any) {
+  @Roles("superadmin", "admin", "agent")
+  remove(@Param("id") id: string, @CurrentUser() currentUser: AuthUser) {
     return this.usersService.remove(+id, currentUser);
   }
 }

@@ -1,0 +1,3 @@
+ALTER TABLE "SystemCredentials"
+    ADD COLUMN IF NOT EXISTS "ProfileName" VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS "ProfileMobile" VARCHAR(15);

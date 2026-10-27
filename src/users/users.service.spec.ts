@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { User, UserType } from './entities/user.entity';
 import { PasswordService } from '../auth/password.service';
+import { SystemCredential } from '../auth/entities/system-credential.entity';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -41,6 +42,10 @@ describe('UsersService', () => {
         {
           provide: getRepositoryToken(User),
           useValue: userRepository,
+        },
+        {
+          provide: getRepositoryToken(SystemCredential),
+          useValue: { findOne: jest.fn(), save: jest.fn() },
         },
       ],
     }).compile();

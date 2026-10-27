@@ -1,16 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { jest } from '@jest/globals';
+import { Test, TestingModule } from "@nestjs/testing";
+import { getRepositoryToken } from "@nestjs/typeorm";
+import { jest } from "@jest/globals";
 
-import { User } from '../users/entities/user.entity';
-import { Transaction } from '../transcation/entities/transcation.entity';
-import { Wallet } from './entities/wallet.entity';
-import { WalletRequest } from './entities/wallet.request.entity';
-import { WalletRequestAction } from './entities/wallet_request.action.entity';
-import { WalletService } from './wallet.service';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { User } from "../users/entities/user.entity";
+import { Transaction } from "../transcation/entities/transcation.entity";
+import { Wallet } from "./entities/wallet.entity";
+import { WalletRequest } from "./entities/wallet.request.entity";
+import { WalletRequestAction } from "./entities/wallet_request.action.entity";
+import { WalletService } from "./wallet.service";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 
-describe('WalletService', () => {
+describe("WalletService", () => {
   let service: WalletService;
 
   const mockWalletRepository = {
@@ -44,16 +44,19 @@ describe('WalletService', () => {
 
   const mockEntityManager = {
     getRepository: jest.fn((entity: unknown) => {
+      if (entity === User) return mockUserRepository;
       if (entity === WalletRequest) return mockWalletRequestRepository;
       if (entity === Wallet) return mockWalletRepository;
-      if (entity === WalletRequestAction) return mockWalletRequestActionRepository;
+      if (entity === WalletRequestAction)
+        return mockWalletRequestActionRepository;
       if (entity === Transaction) return mockTransactionRepository;
-      throw new Error('Unexpected repository requested in transaction');
+      throw new Error("Unexpected repository requested in transaction");
     }),
   };
   mockTransactionRepository.manager = {
-    transaction: jest.fn((work: (manager: typeof mockEntityManager) => unknown) =>
-      work(mockEntityManager),
+    transaction: jest.fn(
+      (work: (manager: typeof mockEntityManager) => unknown) =>
+        work(mockEntityManager),
     ),
   };
 
@@ -89,53 +92,53 @@ describe('WalletService', () => {
     service = module.get<WalletService>(WalletService);
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  it('records a credit transaction when adding wallet points', async () => {
+  it("records a credit transaction when adding wallet points", async () => {
     const user = {
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     };
-    const wallet = { id: 9, userId: user.id, balance: '0.00' };
+    const wallet = { id: 9, userId: user.id, balance: "0.00" };
     mockUserRepository.findOne.mockResolvedValue(user);
     mockWalletRepository.findOne.mockResolvedValue(null);
     mockWalletRepository.create.mockReturnValue(wallet);
     mockWalletRepository.save.mockImplementation(async (value) => value);
 
     await service.create(
-      { userId: user.id, points: '12.50' },
+      { userId: user.id, points: "12.50" },
       {
         id: 5,
-        type: 'agent',
-        uniqueId: 'AGENT001',
-        mobile: '9000000000',
+        type: "agent",
+        uniqueId: "AGENT001",
+        mobile: "9000000000",
       },
     );
 
-    expect(wallet.balance).toBe('12.50');
+    expect(wallet.balance).toBe("12.50");
     expect(mockTransactionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
         walletId: wallet.id,
         userId: user.id,
-        type: 'CREDIT',
-        source: 'ADMIN_ADD',
-        amount: '12.50',
-        balanceBefore: '0.00',
-        balanceAfter: '12.50',
+        type: "CREDIT",
+        source: "ADMIN_ADD",
+        amount: "12.50",
+        balanceBefore: "0.00",
+        balanceAfter: "12.50",
       }),
     );
   });
 
-  it('allows an agent to create a wallet request for an assigned user', async () => {
+  it("allows an agent to create a wallet request for an assigned user", async () => {
     const user = {
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     };
-    const wallet = { id: 9, userId: user.id, balance: '0.00' };
+    const wallet = { id: 9, userId: user.id, balance: "0.00" };
     const request = { id: 7, userId: user.id };
     mockUserRepository.findOne.mockResolvedValue(user);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
@@ -143,12 +146,12 @@ describe('WalletService', () => {
     mockWalletRequestRepository.save.mockResolvedValue(request);
 
     const result = await service.createWalletRequest(
-      { userId: user.id, amount: '100' },
+      { userId: user.id, amount: "100" },
       {
         id: 5,
-        type: 'agent',
-        uniqueId: 'AGENT001',
-        mobile: '9000000000',
+        type: "agent",
+        uniqueId: "AGENT001",
+        mobile: "9000000000",
       },
     );
 
@@ -157,26 +160,26 @@ describe('WalletService', () => {
       expect.objectContaining({
         userId: user.id,
         walletId: wallet.id,
-        amount: '100.00',
-        status: 'PENDING',
+        amount: "100.00",
+        status: "PENDING",
       }),
     );
     expect(mockWalletRequestActionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: request.id,
         performedBy: 5,
-        action: 'CREATED',
+        action: "CREATED",
       }),
     );
   });
 
-  it('creates a wallet before saving a request when the user has no wallet', async () => {
+  it("creates a wallet before saving a request when the user has no wallet", async () => {
     const user = {
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     };
-    const wallet = { id: 9, userId: user.id, balance: '0.00' };
+    const wallet = { id: 9, userId: user.id, balance: "0.00" };
     const request = { id: 7, userId: user.id };
     mockUserRepository.findOne.mockResolvedValue(user);
     mockWalletRepository.findOne.mockResolvedValue(null);
@@ -186,19 +189,19 @@ describe('WalletService', () => {
     mockWalletRequestRepository.save.mockResolvedValue(request);
 
     await service.createWalletRequest(
-      { userId: user.id, amount: '10.25' },
+      { userId: user.id, amount: "10.25" },
       {
         id: 5,
-        type: 'agent',
-        uniqueId: 'AGENT001',
-        mobile: '9000000000',
+        type: "agent",
+        uniqueId: "AGENT001",
+        mobile: "9000000000",
       },
     );
 
     expect(mockWalletRequestRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         walletId: wallet.id,
-        amount: '10.25',
+        amount: "10.25",
       }),
     );
   });
@@ -206,18 +209,18 @@ describe('WalletService', () => {
   it("prevents an agent from creating a wallet request for another agent's user", async () => {
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 6,
     });
 
     await expect(
       service.createWalletRequest(
-        { userId: 42, amount: '100' },
+        { userId: 42, amount: "100" },
         {
           id: 5,
-          type: 'agent',
-          uniqueId: 'AGENT001',
-          mobile: '9000000000',
+          type: "agent",
+          uniqueId: "AGENT001",
+          mobile: "9000000000",
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -225,11 +228,11 @@ describe('WalletService', () => {
     expect(mockWalletRequestRepository.save).not.toHaveBeenCalled();
   });
 
-  it('allows an agent to accept a pending wallet request for an assigned user', async () => {
+  it("allows an agent to accept a pending wallet request for an assigned user", async () => {
     const wallet = {
       id: 3,
       userId: 42,
-      balance: '50.00',
+      balance: "50.00",
       updatedBy: 0,
     };
     const request = {
@@ -237,76 +240,76 @@ describe('WalletService', () => {
       userId: 42,
       walletId: wallet.id,
       wallet,
-      type: 'ADD_POINTS',
-      amount: '25',
-      status: 'PENDING',
+      type: "ADD_POINTS",
+      amount: "25",
+      status: "PENDING",
     };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     });
     mockWalletRepository.save.mockImplementation(async (value) => value);
 
     await service.acceptWalletRequest(7, {
       id: 5,
-      type: 'agent',
-      uniqueId: 'AGENT001',
-      mobile: '9000000000',
+      type: "agent",
+      uniqueId: "AGENT001",
+      mobile: "9000000000",
     });
 
-    expect(wallet.balance).toBe('75.00');
-    expect(request.status).toBe('ACCEPTED');
+    expect(wallet.balance).toBe("75.00");
+    expect(request.status).toBe("ACCEPTED");
     expect(mockTransactionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
         walletId: wallet.id,
         userId: 42,
         requestId: request.id,
-        balanceBefore: '50.00',
-        balanceAfter: '75.00',
+        balanceBefore: "50.00",
+        balanceAfter: "75.00",
       }),
     );
   });
 
-  it('allows an agent to reject a pending wallet request for an assigned user', async () => {
+  it("allows an agent to reject a pending wallet request for an assigned user", async () => {
     const request = {
       id: 7,
       userId: 42,
-      status: 'PENDING',
+      status: "PENDING",
     };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     });
 
     await service.rejectWalletRequest(7, {
       id: 5,
-      type: 'agent',
-      uniqueId: 'AGENT001',
-      mobile: '9000000000',
+      type: "agent",
+      uniqueId: "AGENT001",
+      mobile: "9000000000",
     });
 
-    expect(request.status).toBe('REJECTED');
+    expect(request.status).toBe("REJECTED");
     expect(mockWalletRequestActionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: request.id,
         performedBy: 5,
-        action: 'REJECTED',
+        action: "REJECTED",
       }),
     );
   });
 
-  it('stores superadmin wallet actions without a user foreign key', async () => {
+  it("stores superadmin wallet actions without a user foreign key", async () => {
     const user = {
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     };
-    const wallet = { id: 9, userId: user.id, balance: '0.00' };
+    const wallet = { id: 9, userId: user.id, balance: "0.00" };
     const request = { id: 7, userId: user.id };
     mockUserRepository.findOne.mockResolvedValue(user);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
@@ -314,12 +317,12 @@ describe('WalletService', () => {
     mockWalletRequestRepository.save.mockResolvedValue(request);
 
     await service.createWalletRequest(
-      { userId: user.id, amount: '10.00' },
+      { userId: user.id, amount: "10.00" },
       {
         id: 0,
-        type: 'superadmin',
-        uniqueId: 'GK00001',
-        mobile: '9000000000',
+        type: "superadmin",
+        uniqueId: "GK00001",
+        mobile: "9000000000",
       },
     );
 
@@ -327,16 +330,16 @@ describe('WalletService', () => {
       expect.objectContaining({
         requestId: request.id,
         performedBy: null,
-        action: 'CREATED',
+        action: "CREATED",
       }),
     );
   });
 
-  it('deducts the balance and records a debit when accepting a withdrawal', async () => {
+  it("deducts the balance and records a debit when accepting a withdrawal", async () => {
     const wallet = {
       id: 3,
       userId: 42,
-      balance: '50.00',
+      balance: "50.00",
       updatedBy: 0,
     };
     const request = {
@@ -344,43 +347,43 @@ describe('WalletService', () => {
       userId: 42,
       walletId: wallet.id,
       wallet,
-      type: 'WITHDRAW',
-      amount: '12.50',
-      status: 'PENDING',
+      type: "WITHDRAW",
+      amount: "12.50",
+      status: "PENDING",
     };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     });
     mockWalletRepository.save.mockImplementation(async (value) => value);
 
     await service.acceptWalletRequest(8, {
       id: 5,
-      type: 'agent',
-      uniqueId: 'AGENT001',
-      mobile: '9000000000',
+      type: "agent",
+      uniqueId: "AGENT001",
+      mobile: "9000000000",
     });
 
-    expect(wallet.balance).toBe('37.50');
+    expect(wallet.balance).toBe("37.50");
     expect(mockTransactionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'DEBIT',
-        source: 'WITHDRAW',
-        amount: '12.50',
-        balanceBefore: '50.00',
-        balanceAfter: '37.50',
+        type: "DEBIT",
+        source: "WITHDRAW",
+        amount: "12.50",
+        balanceBefore: "50.00",
+        balanceAfter: "37.50",
       }),
     );
   });
 
-  it('rejects a withdrawal that exceeds the wallet balance', async () => {
+  it("rejects a withdrawal that exceeds the wallet balance", async () => {
     const wallet = {
       id: 3,
       userId: 42,
-      balance: '10.00',
+      balance: "10.00",
       updatedBy: 0,
     };
     const request = {
@@ -388,24 +391,24 @@ describe('WalletService', () => {
       userId: 42,
       walletId: wallet.id,
       wallet,
-      type: 'WITHDRAW',
-      amount: '12.50',
-      status: 'PENDING',
+      type: "WITHDRAW",
+      amount: "12.50",
+      status: "PENDING",
     };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
+      type: "user",
       agentId: 5,
     });
 
     await expect(
       service.acceptWalletRequest(8, {
         id: 5,
-        type: 'agent',
-        uniqueId: 'AGENT001',
-        mobile: '9000000000',
+        type: "agent",
+        uniqueId: "AGENT001",
+        mobile: "9000000000",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
@@ -413,92 +416,129 @@ describe('WalletService', () => {
     expect(mockTransactionRepository.save).not.toHaveBeenCalled();
   });
 
-  it('credits a pending request once when its owner accepts it', async () => {
-    const wallet = { id: 9, userId: 42, balance: '10.00', updatedBy: 0 };
+  it("credits a pending request once when its owner accepts it", async () => {
+    const wallet = { id: 9, userId: 42, balance: "10.00", updatedBy: 0 };
     const request = {
       id: 12,
       userId: 42,
       walletId: wallet.id,
-      type: 'WITHDRAW',
-      amount: '15.00',
-      status: 'PENDING',
+      type: "WITHDRAW",
+      amount: "15.00",
+      status: "PENDING",
     };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
     mockWalletRepository.findOne.mockResolvedValue(wallet);
     mockWalletRepository.save.mockImplementation(async (value) => value);
-    mockUserRepository.findOne.mockResolvedValue({ id: 42, type: 'user' });
+    mockUserRepository.findOne.mockResolvedValue({ id: 42, type: "user" });
 
     const result = await service.acceptOwnWalletRequest(12, {
       id: 42,
-      type: 'user',
-      uniqueId: 'USER001',
-      mobile: '9000000000',
+      type: "user",
+      uniqueId: "USER001",
+      mobile: "9000000000",
     });
 
-    expect(result.status).toBe('ACCEPTED');
-    expect(result.walletBalance).toBe('25.00');
-    expect(wallet.balance).toBe('25.00');
+    expect(result.status).toBe("ACCEPTED");
+    expect(result.walletBalance).toBe("25.00");
+    expect(wallet.balance).toBe("25.00");
     expect(mockTransactionRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'CREDIT', amount: '15.00', balanceAfter: '25.00' }),
+      expect.objectContaining({
+        type: "CREDIT",
+        amount: "15.00",
+        balanceAfter: "25.00",
+      }),
     );
-    await expect(service.acceptOwnWalletRequest(12, {
-      id: 42, type: 'user', uniqueId: 'USER001', mobile: '9000000000',
-    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.acceptOwnWalletRequest(12, {
+        id: 42,
+        type: "user",
+        uniqueId: "USER001",
+        mobile: "9000000000",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('lets the request owner reject without changing the wallet balance', async () => {
-    const request = { id: 13, userId: 42, status: 'PENDING' };
+  it("lets the request owner reject without changing the wallet balance", async () => {
+    const request = { id: 13, userId: 42, status: "PENDING" };
     mockWalletRequestRepository.findOne.mockResolvedValue(request);
-    mockWalletRepository.findOne.mockResolvedValue({ id: 9, userId: 42, balance: '10.00' });
-    mockUserRepository.findOne.mockResolvedValue({ id: 42, type: 'user' });
+    mockWalletRepository.findOne.mockResolvedValue({
+      id: 9,
+      userId: 42,
+      balance: "10.00",
+    });
+    mockUserRepository.findOne.mockResolvedValue({ id: 42, type: "user" });
 
     const result = await service.rejectWalletRequest(13, {
       id: 42,
-      type: 'user',
-      uniqueId: 'USER001',
-      mobile: '9000000000',
+      type: "user",
+      uniqueId: "USER001",
+      mobile: "9000000000",
     });
 
-    expect(result.status).toBe('REJECTED');
-    expect(result.walletBalance).toBe('10.00');
+    expect(result.status).toBe("REJECTED");
+    expect(result.walletBalance).toBe("10.00");
     expect(mockTransactionRepository.save).not.toHaveBeenCalled();
   });
 
-  it('prevents a user from reading another user wallet', async () => {
+  it("prevents a user from reading another user wallet", async () => {
     mockUserRepository.findOne.mockResolvedValue({
       id: 42,
-      type: 'user',
-      agentId: 'AGENT001',
+      type: "user",
+      agentId: "AGENT001",
     });
 
     await expect(
       service.getWalletByUserId(42, {
         id: 6,
-        type: 'user',
-        uniqueId: 'USER002',
-        mobile: '9000000001',
+        type: "user",
+        uniqueId: "USER002",
+        mobile: "9000000001",
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
-  it('allows an agent to view its own wallet', async () => {
-    const wallet = { id: 12, userId: 5, balance: '30.00' };
-    mockUserRepository.findOne.mockResolvedValue({ id: 5, type: 'agent', uniqueId: 'AGENT001' });
+  it("allows an agent to view its own wallet", async () => {
+    const wallet = { id: 12, userId: 5, balance: "30.00" };
+    mockUserRepository.findOne.mockResolvedValue({
+      id: 5,
+      type: "agent",
+      uniqueId: "AGENT001",
+    });
     mockWalletRepository.findOne.mockResolvedValue(wallet);
 
-    await expect(service.getWalletByUserId(5, {
-      id: 5, type: 'agent', uniqueId: 'AGENT001', agentId: 5, mobile: '9000000000',
-    })).resolves.toBe(wallet);
+    await expect(
+      service.getWalletByUserId(5, {
+        id: 5,
+        type: "agent",
+        uniqueId: "AGENT001",
+        agentId: 5,
+        mobile: "9000000000",
+      }),
+    ).resolves.toMatchObject({ ...wallet, blockedFromBetting: false });
   });
 
-  it('does not allow an agent to approve its own wallet request', async () => {
+  it("does not allow an agent to approve its own wallet request", async () => {
     mockWalletRequestRepository.findOne.mockResolvedValue({
-      id: 7, userId: 5, status: 'PENDING', type: 'ADD_POINTS', amount: '10.00',
+      id: 7,
+      userId: 5,
+      status: "PENDING",
+      type: "ADD_POINTS",
+      amount: "10.00",
     });
-    mockUserRepository.findOne.mockResolvedValue({ id: 5, type: 'agent', uniqueId: 'AGENT001' });
+    mockUserRepository.findOne.mockResolvedValue({
+      id: 5,
+      type: "agent",
+      uniqueId: "AGENT001",
+    });
 
-    await expect(service.acceptWalletRequest(7, {
-      id: 5, type: 'agent', uniqueId: 'AGENT001', agentId: 5, mobile: '9000000000',
-    })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.acceptWalletRequest(7, {
+        id: 5,
+        type: "agent",
+        uniqueId: "AGENT001",
+        agentId: 5,
+        mobile: "9000000000",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(mockWalletRepository.save).not.toHaveBeenCalled();
   });
 });

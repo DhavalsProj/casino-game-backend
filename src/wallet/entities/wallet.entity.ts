@@ -30,6 +30,19 @@ export class Wallet {
     })
     balance: string;
 
+    @Column({
+        name: 'temporary_winning_balance',
+        type: 'decimal',
+        precision: 15,
+        scale: 2,
+        default: 0,
+    })
+    temporaryWinningBalance: string;
+
+    get blockedFromBetting(): boolean {
+        return Number(this.temporaryWinningBalance) > 0;
+    }
+
     @OneToMany(
         () => require('../../transcation/entities/transcation.entity').Transaction,
         (transaction: Transaction) => transaction.wallet,

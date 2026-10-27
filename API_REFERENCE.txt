@@ -1,0 +1,414 @@
+CASINO GAME BACKEND - API REFERENCE
+==================================
+
+Base URL
+--------
+Use the port configured by PORT in .env. This project commonly runs at:
+  http://localhost:3001
+The NestJS default is http://localhost:3000 when PORT is not configured.
+
+Conventions
+-----------
+- JSON requests: Content-Type: application/json
+- Protected endpoints: Authorization: Bearer <accessToken>
+- IDs in paths are numeric database IDs unless noted otherwise.
+- Examples below show representative response fields. Server timestamps,
+  generated IDs, and nested relations vary with the database record.
+- Common error response:
+  { "message": "...", "error": "...", "statusCode": 400 }
+- Roles: superadmin, admin, agent, user. Endpoint role lists and record-level
+  ownership checks both apply.
+- JSON property names use camelCase. Database money/points fields are usually
+  returned as decimal strings (for example "10.25"), even when inputs accept
+  numeric values.
+- Typical errors: 400 invalid input/state, 401 missing/expired token or bad
+  credentials, 403 role/ownership denied, 404 record not found, 409 duplicate
+  or conflicting state. Error body is generally
+  { "message": "...", "error": "...", "statusCode": 403 }.
+
+
+CLIENT INTEGRATION FLOW (MOBILE APP AND ADMIN WEB)
+-------------------------------------------------
+
+User app:
+1. POST /auth/login. Save accessToken securely and keep user.id from response.
+2. GET /wallet/:userId for current balance.
+3. GET /wallet/requests/:userId for that user's requests. This returns all
+   statuses; show only status=PENDING as actionable in the app.
+4. For a pending request, POST /wallet/requests/:requestId/action with
+   { "action": "ACCEPTED" } or { "action": "REJECTED" }.
+5. On success, use returned status/walletBalance and refresh the wallet,
+   request list, and GET /wallet/:userId/transactions if showing history.
+The logged-in user may act only on their own requests. Use the request id from
+the request record (not userId). A request can be acted on once; later attempts
+return a conflict/bad-request response because it is no longer pending.
+
+Admin web:
+- Wallet request management currently uses PATCH
+  /wallet/requests/:requestId/accept and /reject (no body).
+- Transaction History uses GET /transactions/:accountId?page=1&limit=10 and
+  expects { data, page, limit, total }. Agent history uses
+  GET /transactions/agent/:agentId with the same pagination/filter query.
+- Do not change these response shapes without updating both web and app clients.
+
+
+1. HEALTH
+---------
+
+GET /
+Auth: none
+Request: no body
+Response: Hello World!
+
+
+2. AUTHENTICATION
+-----------------
+
+POST /auth/login
+Auth: none
+Request (use one identifier field):
+  { "identifier": "GK00012345", "password": "<password>" }
+  or { "mobile": "9876543210", "password": "<password>" }
+  or { "id": "GK00012345", "password": "<password>" }
+Response:
+  {
+    "accessToken": "<JWT>",
+    "user": {
+      "id": 123, "name": "Example User", "mobile": "9876543210",
+      "type": "user", "uniqueId": "GK00012345", "agentId": 5
+    }
+  }
+For Super Admin, identifier is normally "superadmin". Never share the token.
+Normal user login's user object also includes agentName and isActive.
+
+POST /auth/change-password
+Auth: Bearer token
+Request:
+  { "currentPassword": "<current>", "newPassword": "A12345" }
+Password rule: exactly 6 characters: one uppercase, one lowercase, four digits.
+Response: { "message": "Password updated successfully" }
+
+
+3. USERS
+--------
+
+POST /users/create
+Auth: superadmin, admin, agent
+Request:
+  { "name": "Example User", "mobile": "9876543210",
+    "type": "user", "agentId": 5 }
+For an Agent-created user, the server assigns that Agent automatically.
+Response (generated password is returned only at creation):
+  { "user": { "id": 123, "name": "Example User", "mobile": "...",
+      "type": "user", "uniqueId": "GK00012345", "agentId": 5 },
+    "credentials": { "password": "<generated-once>" } }
+
+GET /users?type=user&agentId=5
+Auth: all roles; result is scoped to caller permissions.
+Request: optional query parameters type and agentId
+Response: [ { "id": 123, "name": "Example User", "mobile": "...",
+  "type": "user", "uniqueId": "GK00012345", "agentId": 5 } ]
+
+GET /users/agents
+Auth: superadmin, admin
+Request: no body
+Response: [ { "id": 5, "name": "Example Agent", "type": "agent",
+  "uniqueId": "GK00054321" } ]
+
+POST /users/get-by-id
+Auth: all roles; caller must be permitted to view that user.
+Request: { "id": 123 }
+Response: one safe user object (password is never returned).
+
+PATCH /users/:id
+Auth: all roles, subject to ownership/scope.
+Request (all fields optional):
+  { "name": "Updated Name", "mobile": "9876543210", "agentId": 5 }
+Response: updated safe user object.
+
+DELETE /users/:id
+Auth: superadmin, admin, agent; subject to ownership/scope.
+Request: no body
+Response: no content on success.
+
+
+4. WALLETS AND WALLET REQUESTS
+------------------------------
+Both /wallet/... and /wallets/... prefixes are registered aliases.
+The examples use /wallets.
+
+POST /wallets/create
+Auth: superadmin, admin, agent
+Request: { "userId": 123, "points": "25.50" }
+Response: wallet record with updated balance, e.g.
+  { "id": 7, "userId": 123, "balance": "25.50", "createdBy": 1,
+    "updatedBy": 1, "createdAt": "...", "updatedAt": "..." }
+Positive points create a CREDIT ledger transaction.
+
+GET /wallets/:userId
+GET /wallets/wallet/:userId   (legacy alias)
+Auth: all roles, subject to wallet ownership/agent scope.
+Request: no body
+Response: wallet record including `balance`, `temporaryWinningBalance`, and
+`blockedFromBetting`, or null if no wallet exists. A positive temporary winning
+balance blocks new Fun Target bets.
+
+POST /wallets/:userId/temporary-winnings/transfer
+Auth: user; the authenticated user must own :userId.
+Request: {}
+Response: updated wallet record. Moves the entire temporary winning balance
+into the main wallet in one database transaction and records both ledger legs.
+If there is no temporary winning balance, the API returns a bad request.
+
+POST /wallets/request
+Auth: all roles, subject to wallet ownership/agent scope.
+Request:
+  { "userId": 123, "amount": "10.25", "type": "ADD_POINTS" }
+type is optional; allowed values are ADD_POINTS and WITHDRAW. Default: ADD_POINTS.
+Response: created request, normally status PENDING:
+  { "id": 17, "userId": 123, "walletId": 7, "type": "ADD_POINTS",
+    "amount": "10.25", "status": "PENDING", "createdAt": "..." }
+
+GET /wallets/requests/:userId
+Auth: all roles, subject to ownership/agent scope.
+Request: no body
+Response: array of that user's wallet requests, newest first. Example:
+  [ { "id": 17, "userId": 123, "walletId": 7, "type": "ADD_POINTS",
+      "amount": "10.25", "status": "PENDING", "createdAt": "...",
+      "updatedAt": "..." } ]
+There is no count-only query parameter; clients can count entries whose status
+is PENDING.
+
+GET /wallets/requests/detail/:requestId
+Auth: all roles, subject to ownership/agent scope.
+Request: no body
+Response: one wallet request record.
+
+PATCH /wallets/requests/:requestId
+Auth: all roles, subject to ownership/agent scope; request must be PENDING.
+Request (at least one field required):
+  { "amount": "12.50", "type": "WITHDRAW" }
+Response: updated wallet request record.
+
+DELETE /wallets/requests/:requestId
+Auth: all roles, subject to ownership/agent scope; request must be PENDING.
+Request: no body
+Response: { "message": "Wallet request deleted successfully" }
+
+POST /wallets/requests/:requestId/action
+Auth: superadmin, admin, agent, user; record-level ownership/scope applies.
+This is the single accept/reject endpoint used by the app.
+Request to accept:
+  { "action": "ACCEPTED" }
+Request to reject:
+  { "action": "REJECTED" }
+Response: updated request plus walletBalance, e.g.:
+  {
+    "id": 17, "userId": 123, "walletId": 7, "type": "ADD_POINTS",
+    "amount": "10.25", "status": "ACCEPTED",
+    "walletBalance": "35.75", "wallet": { "id": 7, "userId": 123,
+      "balance": "35.75", "createdAt": "...", "updatedAt": "..." },
+    "createdAt": "...", "updatedAt": "..."
+  }
+Accept credits points and writes a CREDIT transaction. Reject leaves the
+balance unchanged and records a REJECTED action.
+
+PATCH /wallets/requests/:requestId/accept
+Auth: superadmin, admin, agent; record-level scope applies.
+Request: no body
+Response: updated request plus walletBalance. This administrative route applies
+the request's normal type behavior (WITHDRAW acceptance debits the wallet and
+fails if funds are insufficient).
+
+PATCH /wallets/requests/:requestId/reject
+Auth: superadmin, admin, agent; record-level scope applies.
+Request: no body
+Response: updated request plus unchanged walletBalance.
+
+GET /wallets/:userId/transactions
+Auth: all roles, subject to ownership/agent scope.
+Request: no body
+Response: array of wallet ledger and resolved request-history entries.
+Entries include id, userId, walletId, requestId, type, source, amount,
+balanceBefore, balanceAfter, createdAt, status, and recordType. Rejected
+requests have no ledger movement; their balance snapshots can be null on
+legacy rows if not available.
+
+
+5. TRANSACTION HISTORY
+----------------------
+Both /transactions/... and the legacy misspelling /transcation/... are supported.
+
+GET /transactions/:userId
+GET /transcation/:userId  (legacy alias)
+Auth: all roles, subject to account/agent scope.
+userId may be a numeric database ID or a user's/agent's unique ID.
+Optional query: page, limit, search, type=CREDIT|DEBIT.
+Example: GET /transactions/GK00012345?page=1&limit=20&type=CREDIT
+Without query parameters, response is an array of history entries.
+With any pagination/filter parameter, response is:
+  { "data": [ { "id": 10, "userId": 123, "walletId": 7,
+      "requestId": 17, "type": "CREDIT", "source": "ADMIN_ADD",
+      "amount": "10.25", "balanceBefore": "25.50",
+      "balanceAfter": "35.75", "status": "ACCEPTED",
+      "recordType": "WALLET_TRANSACTION", "createdAt": "..." } ],
+    "page": 1, "limit": 20, "total": 1 }
+Page defaults to 1, limit defaults to 10 and is capped at 100. Search text is
+limited to 100 characters. type must be CREDIT or DEBIT.
+
+GET /transactions/agent/:agentId
+GET /transcation/agent/:agentId  (legacy alias)
+Auth: superadmin, admin
+Returns transaction history for users assigned to that Agent database ID.
+Supports the same page, limit, search, and type query parameters/response.
+
+
+6. FUN TARGET ADMIN AND BET APIs
+--------------------------------
+Admin base path: /admin/games/fun-target
+Admin API auth: Bearer token; roles are shown per endpoint.
+
+GET /admin/games/fun-target/config
+Auth: superadmin, admin
+Request: no body
+Response: config record containing gameName, minBet, maxBet, denominations,
+denominationRestrictions, resultMode, joker settings, allocation percentages,
+active, and timestamps.
+
+PATCH /admin/games/fun-target/config
+Auth: superadmin, admin
+Request: any subset of config fields, e.g.:
+  { "minBet": 1, "maxBet": 5000, "resultMode": "MANUAL",
+    "jokerEnabled": true, "jokerMultiplier": 2, "jokerFrequency": 5,
+    "denominations": [1, 5, 10, 50, 100, 500, 1000, 5000],
+    "adminSharePercent": 60, "winningAllocationPercent": 40,
+    "active": true }
+Response: updated config record.
+
+GET /admin/games/fun-target/rounds?page=1&limit=20&status=OPEN
+Auth: superadmin, admin, agent
+status: UPCOMING, OPEN, CLOSED, COMPLETED (optional)
+Response: { "data": [ round records ], "page": 1, "limit": 20,
+  "total": 1 }
+
+POST /admin/games/fun-target/rounds
+Auth: superadmin, admin
+Request: { "scheduledAt": "2026-10-27T12:00:00Z" }
+Response: created round record (id, roundNumber, status, schedule, config snapshot).
+
+GET /admin/games/fun-target/rounds/:id
+Auth: superadmin, admin, agent
+Request: no body
+Response: one round record.
+
+POST /admin/games/fun-target/rounds/:id/open
+Auth: superadmin, admin
+Request: no body
+Response: updated round record with status OPEN.
+
+POST /admin/games/fun-target/rounds/:id/close
+Auth: superadmin, admin
+Request: no body
+Response: updated round record with status CLOSED.
+
+POST /admin/games/fun-target/rounds/:id/result
+Auth: superadmin, admin
+Manual result request: { "winningNumber": 7 }
+Random result request: {} (only when round resultMode is RANDOM)
+Response: round record containing winningNumber and resultGeneratedAt.
+
+POST /admin/games/fun-target/rounds/:id/finalize
+Auth: superadmin, admin
+Request: no body
+Response: completed round record with finalizedAt.
+
+GET /admin/games/fun-target/rounds/:id/result
+Auth: all roles
+Request: no body
+Response: finalized round/result record.
+
+GET /admin/games/fun-target/rounds/:id/bets/summary
+Auth: superadmin, admin, agent
+Request: no body
+Response:
+  { "perNumber": [ { "number": 1, "total": "0.00", "bets": 0 } ],
+    "total": "0.00", "adminReportingShare": "0.00",
+    "winningAllocationReporting": "0.00", "payout": null,
+    "payoutNote": "...", "joker": { "enabled": false, "multiplier": 1 } }
+
+GET /admin/games/fun-target/joker
+Auth: superadmin, admin, agent
+Request: no body
+Response: current Fun Target config/Joker settings record.
+
+PATCH /admin/games/fun-target/joker
+Auth: superadmin, admin
+Request: config fields, e.g. { "jokerEnabled": true, "jokerMultiplier": 3 }
+Response: updated config record.
+
+POST /admin/games/fun-target/joker/schedules
+Auth: superadmin, admin
+Request: { "roundId": 12, "multiplier": 3 }
+Response: schedule record with roundNumber and scheduledAt.
+
+GET /admin/games/fun-target/joker/schedules
+Auth: superadmin, admin, agent
+Request: no body
+Response: array of active Joker schedules.
+
+POST /admin/games/fun-target/joker/schedules/:id/cancel
+Auth: superadmin, admin
+Request: no body
+Response: updated schedule with active=false.
+
+POST /fun-target/bets
+Auth: user
+Request:
+  { "roundId": 12, "number": 7, "amount": 10,
+    "idempotencyKey": "user123-round12-bet1" }
+number is 1-9; amount must meet current config and wallet balance.
+Response: created bet { "id": 1, "roundId": 12, "userId": 123,
+  "number": 7, "amount": "10.00", "idempotencyKey": "...",
+  "createdAt": "..." }
+
+
+7. NO-DATABASE DEVELOPMENT MODE
+-------------------------------
+When DB_ENABLED is not true, the app loads the in-memory NoDb module instead of
+the PostgreSQL modules. It exposes /auth/login, /auth/change-password and the
+listed /users endpoints. Wallet, transaction, and Fun Target APIs are not
+available in this mode. In-memory credentials/data reset when the process restarts.
+
+
+8. API REQUEST/RESPONSE LOGS
+----------------------------
+Requires DB_ENABLED=true and database/migrate-api-logs.sql (or the updated
+database/full-schema.sql for a new database). Every HTTP request is logged,
+including auth/guard failures. Sensitive header/body fields such as password,
+accessToken, authorization, cookie, secret, and credentials are redacted.
+Large payloads are capped; log persistence failures are reported to the backend
+console and do not replace the original API response. Logs are retained
+indefinitely; no automatic deletion or cleanup is configured.
+
+GET /admin/api-logs?page=1&limit=50&statusCode=403&method=POST&userId=123&search=wallet
+Auth: superadmin, admin
+All query filters are optional. limit defaults to 50 and is capped at 100.
+Response:
+  { "data": [ { "id": "42", "requestId": "...", "method": "POST",
+      "path": "/wallets/requests/17/action", "statusCode": 200,
+      "durationMs": 18, "userId": 123, "userType": "user",
+      "ipAddress": "127.0.0.1", "userAgent": "...",
+      "requestHeaders": { "content-type": "application/json" },
+      "requestQuery": {},
+      "requestBody": { "action": "ACCEPTED" },
+      "responseBody": { "status": "ACCEPTED", "walletBalance": "35.75" },
+      "createdAt": "..." } ], "page": 1, "limit": 50, "total": 1 }
+
+GET /admin/api-logs/:id
+Auth: superadmin, admin
+Request: no body
+Response: one API log record with redacted request/response payloads.
+
+Each response includes an x-request-id header. Send that ID to support/developers
+to locate a specific API call in the logs.
+

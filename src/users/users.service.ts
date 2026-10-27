@@ -15,12 +15,15 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { toUserResponse, UserResponse } from './user-response';
 import type { AuthUser } from '../auth/auth-user';
 import { PasswordService } from '../auth/password.service';
+import { SystemCredential } from '../auth/entities/system-credential.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(SystemCredential)
+    private readonly systemCredentialRepository: Repository<SystemCredential>,
     private readonly passwordService: PasswordService,
   ) {}
 
@@ -206,6 +209,10 @@ export class UsersService {
     id: number,
     currentUser: AuthUser,
   ): Promise<UserResponse> {
+    if (id === 0 && currentUser.type === 'superadmin') {
+      const credential = await this.getSuperAdminCredential();
+      return this.superAdminProfile(credential);
+    }
     const user = await this.userRepository.findOne({
       where: { id },
     });
@@ -246,6 +253,17 @@ export class UsersService {
     changes: { name?: string; mobile?: string; agentId?: number | null },
     currentUser: AuthUser,
   ): Promise<UserResponse> {
+    if (id === 0 && currentUser.type === 'superadmin') {
+      const credential = await this.getSuperAdminCredential();
+      if (changes.mobile && changes.mobile !== (credential.profileMobile ?? process.env.SUPERADMIN_MOBILE ?? '9000000000')) {
+        const duplicate = await this.userRepository.findOne({ where: { mobile: changes.mobile } });
+        if (duplicate) throw new ConflictException('Mobile number is already registered');
+      }
+      if (changes.name !== undefined) credential.profileName = changes.name;
+      if (changes.mobile !== undefined) credential.profileMobile = changes.mobile;
+      await this.systemCredentialRepository.save(credential);
+      return this.superAdminProfile(credential);
+    }
     const user = await this.userRepository.findOne({
       where: { id },
     });
@@ -304,6 +322,29 @@ export class UsersService {
     const savedUser = await this.userRepository.findOne({ where: { id } });
     if (!savedUser) throw new NotFoundException('User not found');
     return toUserResponse(savedUser);
+  }
+
+  private async getSuperAdminCredential(): Promise<SystemCredential> {
+    const credential = await this.systemCredentialRepository.findOne({
+      where: { credentialName: process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin', isActive: true },
+    });
+    if (!credential) throw new NotFoundException('Superadmin credential not found');
+    return credential;
+  }
+
+  private superAdminProfile(credential: SystemCredential): UserResponse {
+    return {
+      id: 0,
+      name: credential.profileName ?? 'Super Admin',
+      mobile: credential.profileMobile ?? process.env.SUPERADMIN_MOBILE ?? '9000000000',
+      type: 'superadmin',
+      agentId: null,
+      agentName: null,
+      uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001',
+      isActive: true,
+      createdAt: credential.createdAt,
+      updatedAt: credential.updatedAt,
+    };
   }
 
   async remove(

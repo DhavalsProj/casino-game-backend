@@ -21,6 +21,8 @@ export interface MemoryUser {
 export class NoDbService implements OnModuleInit {
   private readonly users: MemoryUser[] = [];
   private superAdminPasswordHash = '';
+  private superAdminName = 'Super Admin';
+  private superAdminMobile = process.env.SUPERADMIN_MOBILE ?? '9000000000';
 
   constructor(
     private readonly jwtService: JwtService,
@@ -35,7 +37,7 @@ export class NoDbService implements OnModuleInit {
 
   async login(identifier: string, password: string) {
     if (identifier.toLowerCase() === (process.env.SUPERADMIN_IDENTIFIER ?? 'superadmin').toLowerCase() && await bcrypt.compare(password, this.superAdminPasswordHash)) {
-      const user = { id: 0, name: 'Super Admin', mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000', type: 'superadmin', uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001', agentId: null };
+      const user = { id: 0, name: this.superAdminName, mobile: this.superAdminMobile, type: 'superadmin', uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001', agentId: null };
       return { accessToken: await this.jwtService.signAsync({ sub: user.id, mobile: user.mobile, type: user.type, uniqueId: user.uniqueId, agentId: null }), user };
     }
 
@@ -86,7 +88,7 @@ export class NoDbService implements OnModuleInit {
     if (type === UserType.USER && !this.users.some((user) => user.type === UserType.AGENT && user.id === agentId)) throw new NotFoundException('Agent not found');
     if (this.users.some((user) => user.mobile === request.mobile)) throw new ConflictException('User already registered');
     const normalizedAgentId = agentId ?? null;
-    const uniqueId = this.generateUniqueId(type);
+    const uniqueId = this.generateUniqueId();
     const password = this.passwordService.generateRandomPassword();
     const passwordHash = await this.passwordService.hashPassword(password);
     const user: MemoryUser = { id: Math.max(0, ...this.users.map((item) => item.id)) + 1, name: request.name, mobile: request.mobile, type, agentId: normalizedAgentId, uniqueId, passwordHash, createdAt: new Date() };
@@ -95,6 +97,7 @@ export class NoDbService implements OnModuleInit {
   }
 
   getById(id: number, currentUser: AuthUser) {
+    if (id === 0 && currentUser.type === 'superadmin') return { id: 0, name: this.superAdminName, mobile: this.superAdminMobile, type: 'superadmin', agentId: null, agentName: null, uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001', isActive: true };
     const user = this.users.find((item) => item.id === id);
     if (!user) throw new NotFoundException('User not found');
     const allowed = currentUser.type === 'superadmin' || currentUser.type === 'admin' || (currentUser.type === UserType.AGENT && user.type === UserType.AGENT && user.id === currentUser.id) || (currentUser.type === UserType.AGENT && user.type === UserType.USER && user.agentId === currentUser.id) || (currentUser.type === UserType.USER && user.id === currentUser.id);
@@ -103,6 +106,12 @@ export class NoDbService implements OnModuleInit {
   }
 
   update(id: number, changes: { name?: string; mobile?: string }, currentUser: AuthUser) {
+    if (id === 0 && currentUser.type === 'superadmin') {
+      if (changes.mobile && changes.mobile !== this.superAdminMobile && this.users.some((item) => item.mobile === changes.mobile)) throw new ConflictException('Mobile number is already registered');
+      if (changes.name !== undefined) this.superAdminName = changes.name;
+      if (changes.mobile !== undefined) this.superAdminMobile = changes.mobile;
+      return { id: 0, name: this.superAdminName, mobile: this.superAdminMobile, type: 'superadmin', agentId: null, agentName: null, uniqueId: process.env.SUPERADMIN_UNIQUE_ID ?? 'GK00001', isActive: true };
+    }
     const user = this.users.find((item) => item.id === id);
     if (!user) throw new NotFoundException('User not found');
     const admin = currentUser.type === 'superadmin' || currentUser.type === 'admin';
@@ -150,7 +159,7 @@ export class NoDbService implements OnModuleInit {
     return { id: user.id, name: user.name, mobile: user.mobile, type: user.type, agentId: user.agentId, agentName: user.agentId ? this.users.find((item) => item.id === user.agentId)?.name ?? null : null, uniqueId: user.uniqueId, createdAt: user.createdAt, updatedAt: user.createdAt };
   }
 
-  private generateUniqueId(type: UserType): string {
+  private generateUniqueId(): string {
     let candidate = '';
     do {
       candidate = `GK00${this.randomDigits(6)}`;

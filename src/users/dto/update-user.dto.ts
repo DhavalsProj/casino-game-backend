@@ -1,4 +1,4 @@
-import { IsInt, IsMobilePhone, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength, Min } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -9,7 +9,9 @@ export class UpdateUserDto {
   name?: string;
 
   @IsOptional()
-  @IsMobilePhone('en-IN')
+  @Matches(/^[6-9]\d{9}$/, {
+    message: 'Mobile number must be exactly 10 digits and start with 6, 7, 8, or 9',
+  })
   mobile?: string;
 
   @IsOptional()

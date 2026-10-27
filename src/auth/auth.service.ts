@@ -95,6 +95,8 @@ export class AuthService implements OnModuleInit {
           systemCredential.passwordHash,
         )
       : false;
+    const superAdminName = systemCredential?.profileName ?? 'Super Admin';
+    const superAdminMobile = systemCredential?.profileMobile ?? process.env.SUPERADMIN_MOBILE ?? '9000000000';
 
     // Super Admin login
     if (
@@ -112,7 +114,7 @@ export class AuthService implements OnModuleInit {
 
       const accessToken = await this.jwtService.signAsync({
         sub: 0,
-        mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000',
+        mobile: superAdminMobile,
         type: 'superadmin',
         uniqueId: superAdminUniqueId,
         agentId: null,
@@ -122,8 +124,8 @@ export class AuthService implements OnModuleInit {
         accessToken,
         user: {
           id: 0,
-          name: 'Super Admin',
-          mobile: process.env.SUPERADMIN_MOBILE ?? '9000000000',
+          name: superAdminName,
+          mobile: superAdminMobile,
           type: 'superadmin',
           uniqueId: superAdminUniqueId,
           agentId: null,

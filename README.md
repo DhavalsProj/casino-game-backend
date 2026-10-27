@@ -37,6 +37,8 @@ For accurate before/after balances on rejected wallet requests, run [`database/m
 
 To apply both of these recent database changes with one file, run [`database/migrate-current-db-changes.sql`](database/migrate-current-db-changes.sql) against the existing PostgreSQL database. It is safe to rerun.
 
+For persistent API request/response logs on an existing database, run [`database/migrate-api-logs.sql`](database/migrate-api-logs.sql) before restarting the backend. For a new local database, [`database/full-schema.sql`](database/full-schema.sql) includes the API log table. Run [`database/migrate-superadmin-profile.sql`](database/migrate-superadmin-profile.sql) on an existing database to allow editing the superadmin name and mobile number. Passwords, bearer tokens, authorization headers, and similar secrets are redacted from stored payloads. API request logs and login audit records older than 15 days are automatically removed daily. Set `API_LOG_RETENTION_DAYS` to a positive integer to change the default retention period. Admins and superadmins can inspect API request logs through `GET /admin/api-logs` and `GET /admin/api-logs/:id`, or in the Admin UI under **API Logs**.
+
 Set `SUPERADMIN_IDENTIFIER`, `SUPERADMIN_MOBILE`, and a strong `SUPERADMIN_PASSWORD` in `.env`. On first database-backed startup, the API hashes the password with bcrypt and inserts it into `SystemCredentials`; it does not overwrite an existing credential. Alternatively, run `npm run seed:superadmin`. Superadmin login uses the database hash. Keep `.env` private. Regular passwords are bcrypt-hashed in `Users.password_hash`; a generated initial password is returned once in the account-creation response and is not stored in plaintext.
 
 ## API
@@ -70,8 +72,9 @@ Both `/wallet/...` and `/wallets/...` paths are supported.
 - `PATCH /wallets/requests/:requestId` — updates a pending request with `{ "amount": "12.50", "type": "WITHDRAW" }`; either field may be omitted.
 - `DELETE /wallets/requests/:requestId` — deletes a pending request.
 - `PATCH /wallets/requests/:requestId/accept` and `PATCH /wallets/requests/:requestId/reject` — process a pending request. Withdrawals are rejected if the wallet balance is insufficient.
-- `GET /wallets/:userId/transactions` or `GET /transactions/:userId` — lists transactions newest first. `/transcation/:userId` remains available as a legacy spelling.
-- `GET /transactions/agent/:agentId` — returns combined transaction histories for all users assigned to the selected agent. Only admins and superadmins may call it; `agentId` is the agent's numeric database ID.
+- `GET /wallets/:userId/transactions` or `GET /transactions/:userId` — lists transactions newest first. `userId` may be a numeric database ID or account unique ID. `/transcation/:userId` remains available as a legacy spelling.
+- Add `page`, `limit`, `search`, or `type=CREDIT|DEBIT` to `/transactions/:userId` for a paginated response (`data`, `page`, `limit`, and `total`); page size is capped at 100. The unpaginated response remains an array for older clients.
+- `GET /transactions/agent/:agentId` — returns combined transaction histories for all users assigned to the selected agent. Only admins and superadmins may call it; `agentId` is the agent's numeric database ID. It accepts the same pagination and search parameters.
 
 Wallet and transaction reads are limited to admins/superadmins, the wallet owner, or the assigned agent. An agent can also read their own agent wallet and transactions. Requests can be edited or deleted only while pending and only by an admin/superadmin, the request owner, or that user's assigned agent. Request approval or rejection is limited to admins, superadmins, and agents. In no-database mode (`DB_ENABLED` is not `true`), wallet and transaction routes are not available.
 

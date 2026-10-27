@@ -17,6 +17,12 @@ export class SystemCredential {
   @Column({ name: 'PasswordHash', type: 'varchar', length: 255 })
   passwordHash: string;
 
+  @Column({ name: 'ProfileName', type: 'varchar', length: 100, nullable: true })
+  profileName: string | null;
+
+  @Column({ name: 'ProfileMobile', type: 'varchar', length: 15, nullable: true })
+  profileMobile: string | null;
+
   @Column({ name: 'IsActive', type: 'boolean', default: true })
   isActive: boolean;
 

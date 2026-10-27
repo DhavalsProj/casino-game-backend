@@ -26,6 +26,11 @@ export enum WalletTransactionSource {
   OTHER = 'OTHER',
 }
 
+export enum WalletBalanceBucket {
+  MAIN = 'MAIN',
+  TEMPORARY_WINNING = 'TEMPORARY_WINNING',
+}
+
 @Entity('transactions')
 export class Transaction {
   @PrimaryGeneratedColumn()
@@ -77,6 +82,9 @@ export class Transaction {
     enum: WalletTransactionSource,
   })
   source: WalletTransactionSource;
+
+  @Column({ name: 'balance_bucket', type: 'varchar', length: 30, default: WalletBalanceBucket.MAIN })
+  balanceBucket: WalletBalanceBucket;
 
   @Column({
     type: 'decimal',

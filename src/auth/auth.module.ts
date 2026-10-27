@@ -1,39 +1,40 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { Module } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { JwtModule } from "@nestjs/jwt";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { User } from '../users/entities/user.entity';
-import { LoginAudit } from './entities/login-audit.entity';
-import { SystemCredential } from './entities/system-credential.entity';
+import { User } from "../users/entities/user.entity";
+import { LoginAudit } from "./entities/login-audit.entity";
+import { SystemCredential } from "./entities/system-credential.entity";
 
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { PasswordService } from './password.service';
+import { AuthController } from "./auth.controller";
+import { AuthService } from "./auth.service";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { RolesGuard } from "./guards/roles.guard";
+import { PasswordService } from "./password.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      User,
-      SystemCredential,
-      LoginAudit,
-    ]),
+    TypeOrmModule.forFeature([User, SystemCredential, LoginAudit]),
 
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: (() => {
-          const secret = config.get<string>('JWT_SECRET');
-          if (process.env.NODE_ENV === 'production' && !secret) {
-            throw new Error('JWT_SECRET is required in production');
+          const secret = config.get<string>("JWT_SECRET");
+          if (
+            process.env.NODE_ENV === "production" &&
+            (!secret || secret.length < 32)
+          ) {
+            throw new Error(
+              "JWT_SECRET must contain at least 32 characters in production",
+            );
           }
-          return secret ?? 'development-secret-change-me';
+          return secret ?? "development-secret-change-me";
         })(),
         signOptions: {
-          expiresIn: '1h',
+          expiresIn: "1h",
         },
       }),
     }),
@@ -41,19 +42,8 @@ import { PasswordService } from './password.service';
 
   controllers: [AuthController],
 
-  providers: [
-    AuthService,
-    PasswordService,
-    JwtAuthGuard,
-    RolesGuard,
-  ],
+  providers: [AuthService, PasswordService, JwtAuthGuard, RolesGuard],
 
-  exports: [
-    AuthService,
-    PasswordService,
-    JwtModule,
-    JwtAuthGuard,
-    RolesGuard,
-  ],
+  exports: [AuthService, PasswordService, JwtModule, JwtAuthGuard, RolesGuard],
 })
 export class AuthModule {}

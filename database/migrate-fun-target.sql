@@ -1,3 +1,5 @@
+CREATE SEQUENCE IF NOT EXISTS fun_target_round_number_seq;
+
 CREATE TABLE IF NOT EXISTS fun_target_config (
   id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1), game_name varchar NOT NULL DEFAULT 'Fun Target',
   min_bet numeric(15,2) NOT NULL DEFAULT 1.00 CHECK (min_bet > 0), max_bet numeric(15,2) NOT NULL DEFAULT 5000.00 CHECK (max_bet >= min_bet AND max_bet <= 5000),
@@ -10,13 +12,33 @@ CREATE TABLE IF NOT EXISTS fun_target_config (
   CHECK (admin_share_percent + winning_allocation_percent = 100)
 );
 CREATE TABLE IF NOT EXISTS fun_target_rounds (
-  id serial PRIMARY KEY, status varchar NOT NULL DEFAULT 'UPCOMING' CHECK (status IN ('UPCOMING','OPEN','CLOSED','COMPLETED')),
+  id serial PRIMARY KEY,
+  round_number integer NOT NULL DEFAULT nextval('fun_target_round_number_seq'),
+  status varchar NOT NULL DEFAULT 'UPCOMING' CHECK (status IN ('UPCOMING','OPEN','CLOSED','COMPLETED')),
   scheduled_at timestamptz NOT NULL UNIQUE, opened_at timestamptz, closed_at timestamptz,
   result_mode varchar NOT NULL CHECK (result_mode IN ('MANUAL','RANDOM')), joker_enabled boolean NOT NULL DEFAULT false,
   joker_multiplier integer NOT NULL DEFAULT 1 CHECK (joker_multiplier > 0), winning_number integer CHECK (winning_number BETWEEN 1 AND 9),
   result_generated_by integer, result_generated_at timestamptz, finalized_by integer, finalized_at timestamptz,
   created_by integer, created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE fun_target_rounds ADD COLUMN IF NOT EXISTS round_number integer;
+WITH numbered_rounds AS (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY scheduled_at, id) AS round_number
+  FROM fun_target_rounds
+  WHERE round_number IS NULL
+)
+UPDATE fun_target_rounds AS rounds
+SET round_number = numbered_rounds.round_number
+FROM numbered_rounds
+WHERE rounds.id = numbered_rounds.id;
+SELECT setval(
+  'fun_target_round_number_seq',
+  COALESCE(MAX(round_number), 1),
+  COALESCE(MAX(round_number), 0) > 0
+) FROM fun_target_rounds;
+ALTER TABLE fun_target_rounds ALTER COLUMN round_number SET DEFAULT nextval('fun_target_round_number_seq');
+ALTER TABLE fun_target_rounds ALTER COLUMN round_number SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fun_target_round_number ON fun_target_rounds(round_number);
 CREATE TABLE IF NOT EXISTS fun_target_bets (
   id serial PRIMARY KEY, round_id integer NOT NULL REFERENCES fun_target_rounds(id), user_id integer NOT NULL REFERENCES "Users"(id),
   number integer NOT NULL CHECK (number BETWEEN 1 AND 9), amount numeric(15,2) NOT NULL CHECK (amount > 0),
